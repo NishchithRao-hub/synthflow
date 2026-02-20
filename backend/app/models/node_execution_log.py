@@ -6,6 +6,7 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.core.database import Base
 from app.models.base import TimestampMixin, generate_uuid
+from app.models.workflow_run import WorkflowRun
 
 
 class NodeExecutionLog(Base, TimestampMixin):
