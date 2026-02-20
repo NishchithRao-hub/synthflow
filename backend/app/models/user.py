@@ -1,11 +1,15 @@
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
 from sqlalchemy import String
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.core.database import Base
 from app.models.base import TimestampMixin, generate_uuid
-from app.models.workflow import Workflow
+
+if TYPE_CHECKING:
+    from app.models.workflow import Workflow
 
 
 class User(Base, TimestampMixin):
