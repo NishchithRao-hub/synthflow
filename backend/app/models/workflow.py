@@ -1,13 +1,17 @@
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
 from sqlalchemy import Boolean, ForeignKey, Integer, String, Text
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.core.database import Base
 from app.models.base import TimestampMixin, generate_uuid
-from app.models.user import User
-from app.models.workflow_run import WorkflowRun
+
+if TYPE_CHECKING:
+    from app.models.user import User
+    from app.models.workflow_run import WorkflowRun
 
 
 class Workflow(Base, TimestampMixin):
