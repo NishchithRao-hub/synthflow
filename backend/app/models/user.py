@@ -5,6 +5,7 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.core.database import Base
 from app.models.base import TimestampMixin, generate_uuid
+from app.models.workflow import Workflow
 
 
 class User(Base, TimestampMixin):
