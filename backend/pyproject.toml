@@ -19,7 +19,8 @@ dependencies = [
     "boto3 (>=1.42.50,<2.0.0)",
     "structlog (>=25.5.0,<26.0.0)",
     "stripe (>=14.3.0,<15.0.0)",
-    "python-multipart (>=0.0.22,<0.0.23)"
+    "python-multipart (>=0.0.22,<0.0.23)",
+    "email-validator (>=2.3.0,<3.0.0)"
 ]
 
 
