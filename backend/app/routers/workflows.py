@@ -5,6 +5,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
 from app.core.database import get_db
+from app.core.dependencies import get_current_user
+from app.models.user import User
 from app.schemas.workflow import (
     WorkflowCreate,
     WorkflowCreateResponse,
@@ -17,17 +19,14 @@ from app.services import workflow_service
 
 router = APIRouter(prefix="/api/workflows", tags=["Workflows"])
 
-# Temporary: hardcoded user ID until we implement auth in Phase 2.
-# This will be replaced with a proper dependency that extracts user from JWT.
-TEMP_USER_ID = "temp-user-001"
-
 
 @router.post("", response_model=WorkflowCreateResponse, status_code=201)
 async def create_workflow(
     data: WorkflowCreate,
+    current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    workflow = await workflow_service.create_workflow(db, TEMP_USER_ID, data)
+    workflow = await workflow_service.create_workflow(db, current_user.id, data)
     return WorkflowCreateResponse(
         id=workflow.id,
         name=workflow.name,
@@ -40,10 +39,11 @@ async def create_workflow(
 async def list_workflows(
     page: int = Query(default=1, ge=1),
     per_page: int = Query(default=20, ge=1, le=100),
+    current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
     workflows, total = await workflow_service.get_workflows(
-        db, TEMP_USER_ID, page, per_page
+        db, current_user.id, page, per_page
     )
 
     items = []
@@ -71,9 +71,12 @@ async def list_workflows(
 @router.get("/{workflow_id}", response_model=WorkflowResponse)
 async def get_workflow(
     workflow_id: str,
+    current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    workflow = await workflow_service.get_workflow_by_id(db, workflow_id, TEMP_USER_ID)
+    workflow = await workflow_service.get_workflow_by_id(
+        db, workflow_id, current_user.id
+    )
     return WorkflowResponse.model_validate(workflow)
 
 
@@ -81,10 +84,11 @@ async def get_workflow(
 async def update_workflow(
     workflow_id: str,
     data: WorkflowUpdate,
+    current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
     workflow = await workflow_service.update_workflow(
-        db, workflow_id, TEMP_USER_ID, data
+        db, workflow_id, current_user.id, data
     )
     return WorkflowResponse.model_validate(workflow)
 
@@ -92,7 +96,8 @@ async def update_workflow(
 @router.delete("/{workflow_id}", status_code=204)
 async def delete_workflow(
     workflow_id: str,
+    current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    await workflow_service.delete_workflow(db, workflow_id, TEMP_USER_ID)
+    await workflow_service.delete_workflow(db, workflow_id, current_user.id)
     return None
