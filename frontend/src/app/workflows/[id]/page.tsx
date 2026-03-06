@@ -3,22 +3,34 @@
 "use client";
 
 import { useParams, useRouter } from "next/navigation";
-import { useEffect, useState } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useAuth } from "@/contexts/auth-context";
-import api from "@/lib/api";
-import type { Workflow } from "@/types";
-import type { Node } from "@xyflow/react";
+import { useWorkflow, useSaveWorkflow } from "@/hooks/use-workflow";
+import type { Node, Edge } from "@xyflow/react";
 import WorkflowCanvas from "@/components/workflow/workflow-canvas";
 import Button from "@/components/ui/button";
-import { ArrowLeft, Save } from "lucide-react";
+import { ArrowLeft, Save, Check, AlertCircle } from "lucide-react";
 
 export default function WorkflowEditorPage() {
   const params = useParams();
   const router = useRouter();
   const workflowId = params.id as string;
   const { isLoading: authLoading, isAuthenticated } = useAuth();
-  const [selectedNode, setSelectedNode] = useState<Node | null>(null);
+
+  const { data: workflow, isLoading } = useWorkflow(
+    workflowId,
+    isAuthenticated,
+  );
+  const saveWorkflow = useSaveWorkflow(workflowId);
+
+  const graphRef = useRef<{ nodes: Node[]; edges: Edge[] }>({
+    nodes: [],
+    edges: [],
+  });
+  const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
+  const [saveStatus, setSaveStatus] = useState<
+    "idle" | "saving" | "saved" | "error"
+  >("idle");
 
   useEffect(() => {
     if (!authLoading && !isAuthenticated) {
@@ -26,14 +38,111 @@ export default function WorkflowEditorPage() {
     }
   }, [authLoading, isAuthenticated, router]);
 
-  const { data: workflow, isLoading } = useQuery<Workflow>({
-    queryKey: ["workflow", workflowId],
-    queryFn: async () => {
-      const response = await api.get(`/api/workflows/${workflowId}`);
-      return response.data;
-    },
-    enabled: isAuthenticated,
+  // Clear "saved" status after 2 seconds
+  useEffect(() => {
+    if (saveStatus === "saved") {
+      const timer = setTimeout(() => setSaveStatus("idle"), 2000);
+      return () => clearTimeout(timer);
+    }
+  }, [saveStatus]);
+
+  // Warn before leaving with unsaved changes
+  useEffect(() => {
+    const handleBeforeUnload = (e: BeforeUnloadEvent) => {
+      if (hasUnsavedChanges) {
+        e.preventDefault();
+      }
+    };
+    window.addEventListener("beforeunload", handleBeforeUnload);
+    return () => window.removeEventListener("beforeunload", handleBeforeUnload);
+  }, [hasUnsavedChanges]);
+
+  const handleGraphChange = useCallback((nodes: Node[], edges: Edge[]) => {
+    graphRef.current = { nodes, edges };
+    setHasUnsavedChanges(true);
+    setSaveStatus("idle");
+  }, []);
+
+  const handleSave = async () => {
+    setSaveStatus("saving");
+
+    const { nodes, edges } = graphRef.current;
+
+    // Convert React Flow nodes/edges back to backend format
+    const graphData = {
+      nodes: nodes.map((node) => {
+        const data = node.data as Record<string, unknown>;
+        return {
+          id: node.id,
+          type: node.type || "trigger",
+          subtype: (data.subtype as string) || undefined,
+          config: {
+            ...((data.config as Record<string, unknown>) || {}),
+            label: data.label,
+          },
+          position: {
+            x: node.position.x,
+            y: node.position.y,
+          },
+        };
+      }),
+      edges: edges.map((edge) => ({
+        source: edge.source,
+        target: edge.target,
+      })),
+    };
+
+    try {
+      await saveWorkflow.mutateAsync({ graph_data: graphData });
+      setHasUnsavedChanges(false);
+      setSaveStatus("saved");
+    } catch {
+      setSaveStatus("error");
+    }
+  };
+
+  // Keyboard shortcut: Ctrl+S to save
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && e.key === "s") {
+        e.preventDefault();
+        handleSave();
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
   });
+
+  // Convert backend graph_data to React Flow format
+  const initialNodes: Node[] = (workflow?.graph_data?.nodes || []).map(
+    (node) => ({
+      id: node.id,
+      type: node.type,
+      position: { x: node.position.x, y: node.position.y },
+      data: {
+        label: node.config?.label || node.subtype || node.type,
+        subtype: node.subtype,
+        config: node.config || {},
+      },
+    }),
+  );
+
+  const initialEdges: Edge[] = (workflow?.graph_data?.edges || []).map(
+    (edge, index) => ({
+      id: `edge_${index}`,
+      source: edge.source,
+      target: edge.target,
+      style: { stroke: "var(--border-hover)", strokeWidth: 2 },
+      animated: true,
+    }),
+  );
+
+  // Initialize graphRef with loaded data
+  useEffect(() => {
+    if (initialNodes.length > 0) {
+      graphRef.current = { nodes: initialNodes, edges: initialEdges };
+    }
+  }, [workflow]);
 
   if (authLoading || isLoading) {
     return (
@@ -65,30 +174,6 @@ export default function WorkflowEditorPage() {
     );
   }
 
-  // Convert backend graph_data to React Flow format
-  const initialNodes: Node[] = (workflow?.graph_data?.nodes || []).map(
-    (node) => ({
-      id: node.id,
-      type: node.type,
-      position: { x: node.position.x, y: node.position.y },
-      data: {
-        label: node.config?.label || node.subtype || node.type,
-        subtype: node.subtype,
-        config: node.config,
-      },
-    }),
-  );
-
-  const initialEdges = (workflow?.graph_data?.edges || []).map(
-    (edge, index) => ({
-      id: `edge_${index}`,
-      source: edge.source,
-      target: edge.target,
-      style: { stroke: "var(--border-hover)", strokeWidth: 2 },
-      animated: true,
-    }),
-  );
-
   return (
     <div
       className="h-screen flex flex-col"
@@ -96,7 +181,7 @@ export default function WorkflowEditorPage() {
     >
       {/* Top bar */}
       <div
-        className="flex items-center justify-between px-4 py-3 border-b"
+        className="flex items-center justify-between px-4 py-3 border-b flex-shrink-0"
         style={{
           backgroundColor: "var(--bg-secondary)",
           borderColor: "var(--border-color)",
@@ -104,7 +189,15 @@ export default function WorkflowEditorPage() {
       >
         <div className="flex items-center gap-3">
           <button
-            onClick={() => router.push("/dashboard")}
+            onClick={() => {
+              if (hasUnsavedChanges) {
+                if (window.confirm("You have unsaved changes. Leave anyway?")) {
+                  router.push("/dashboard");
+                }
+              } else {
+                router.push("/dashboard");
+              }
+            }}
             className="p-2 rounded-lg transition-colors"
             style={{ color: "var(--text-secondary)" }}
             onMouseEnter={(e) =>
@@ -117,12 +210,21 @@ export default function WorkflowEditorPage() {
             <ArrowLeft size={18} />
           </button>
           <div>
-            <h1
-              className="text-sm font-semibold"
-              style={{ color: "var(--text-primary)" }}
-            >
-              {workflow?.name || "Untitled Workflow"}
-            </h1>
+            <div className="flex items-center gap-2">
+              <h1
+                className="text-sm font-semibold"
+                style={{ color: "var(--text-primary)" }}
+              >
+                {workflow?.name || "Untitled Workflow"}
+              </h1>
+              {hasUnsavedChanges && (
+                <span
+                  className="w-2 h-2 rounded-full"
+                  style={{ backgroundColor: "var(--accent-orange)" }}
+                  title="Unsaved changes"
+                />
+              )}
+            </div>
             <p className="text-xs" style={{ color: "var(--text-muted)" }}>
               v{workflow?.version || 1} ·{" "}
               {workflow?.is_active ? "Active" : "Inactive"}
@@ -130,19 +232,33 @@ export default function WorkflowEditorPage() {
           </div>
         </div>
 
-        <div className="flex items-center gap-2">
-          {selectedNode && (
+        <div className="flex items-center gap-3">
+          {/* Save status indicator */}
+          {saveStatus === "saved" && (
             <span
-              className="text-xs px-2 py-1 rounded-md"
-              style={{
-                backgroundColor: "var(--bg-tertiary)",
-                color: "var(--text-secondary)",
-              }}
+              className="flex items-center gap-1 text-xs"
+              style={{ color: "var(--accent-green)" }}
             >
-              Selected: {selectedNode.id}
+              <Check size={14} />
+              Saved
             </span>
           )}
-          <Button size="sm" variant="secondary">
+          {saveStatus === "error" && (
+            <span
+              className="flex items-center gap-1 text-xs"
+              style={{ color: "var(--accent-red)" }}
+            >
+              <AlertCircle size={14} />
+              Save failed
+            </span>
+          )}
+
+          <Button
+            size="sm"
+            onClick={handleSave}
+            loading={saveStatus === "saving"}
+            disabled={!hasUnsavedChanges && saveStatus !== "error"}
+          >
             <Save size={14} />
             Save
           </Button>
@@ -154,7 +270,7 @@ export default function WorkflowEditorPage() {
         <WorkflowCanvas
           initialNodes={initialNodes}
           initialEdges={initialEdges}
-          onNodeSelect={setSelectedNode}
+          onGraphChange={handleGraphChange}
         />
       </div>
     </div>
