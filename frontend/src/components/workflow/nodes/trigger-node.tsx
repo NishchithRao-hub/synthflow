@@ -6,7 +6,7 @@ import { memo } from "react";
 import { Handle, Position, type NodeProps } from "@xyflow/react";
 import { Zap } from "lucide-react";
 
-function TriggerNode({ selected }: NodeProps) {
+function TriggerNode({ data, selected }: NodeProps) {
   return (
     <div
       className="rounded-xl border-2 px-4 py-3 min-w-[180px]"
@@ -37,10 +37,10 @@ function TriggerNode({ selected }: NodeProps) {
         className="text-sm font-medium"
         style={{ color: "var(--text-primary)" }}
       >
-        Webhook
+        {((data as Record<string, unknown>)?.label as string) || "Webhook"}
       </p>
       <p className="text-xs mt-0.5" style={{ color: "var(--text-muted)" }}>
-        Starts the workflow
+        {((data as Record<string, unknown>)?.subtype as string) || "webhook"}
       </p>
 
       {/* Output handle */}
