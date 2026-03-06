@@ -23,15 +23,14 @@ import TriggerNode from "./nodes/trigger-node";
 import AINode from "./nodes/ai-node";
 import ActionNode from "./nodes/action-node";
 import NodePalette from "./node-palette";
+import NodeConfigPanel from "./config-panel/node-config-panel";
 
-// Register custom node types
 const nodeTypes = {
   trigger: TriggerNode,
   ai: AINode,
   action: ActionNode,
 };
 
-// Default data for each node type when dropped
 const defaultNodeData: Record<string, Record<string, unknown>> = {
   trigger: { label: "Webhook", subtype: "webhook", config: {} },
   ai: { label: "AI Task", subtype: "classify", config: {} },
@@ -41,9 +40,7 @@ const defaultNodeData: Record<string, Record<string, unknown>> = {
 interface WorkflowCanvasProps {
   initialNodes?: Node[];
   initialEdges?: Edge[];
-  onNodesChange?: (nodes: Node[]) => void;
-  onEdgesChange?: (edges: Edge[]) => void;
-  onNodeSelect?: (node: Node | null) => void;
+  onGraphChange?: (nodes: Node[], edges: Edge[]) => void;
 }
 
 let nodeId = 0;
@@ -52,66 +49,49 @@ const getNextNodeId = () => `node_${++nodeId}`;
 export default function WorkflowCanvas({
   initialNodes = [],
   initialEdges = [],
-  onNodesChange: onNodesChangeCallback,
-  onEdgesChange: onEdgesChangeCallback,
-  onNodeSelect,
+  onGraphChange,
 }: WorkflowCanvasProps) {
   const reactFlowWrapper = useRef<HTMLDivElement>(null);
   const [reactFlowInstance, setReactFlowInstance] =
     useState<ReactFlowInstance | null>(null);
   const [nodes, setNodes, onNodesChange] = useNodesState(initialNodes);
   const [edges, setEdges, onEdgesChange] = useEdgesState(initialEdges);
+  const [selectedNode, setSelectedNode] = useState<Node | null>(null);
 
-  // Notify parent of changes
-  const handleNodesChange = useCallback(
-    (changes: Parameters<typeof onNodesChange>[0]) => {
-      onNodesChange(changes);
-      // We need to use a timeout to get the updated nodes after state update
-      setTimeout(() => {
-        onNodesChangeCallback?.(nodes);
-      }, 0);
+  // Notify parent of graph changes
+  const notifyChange = useCallback(
+    (updatedNodes: Node[], updatedEdges: Edge[]) => {
+      onGraphChange?.(updatedNodes, updatedEdges);
     },
-    [onNodesChange, onNodesChangeCallback, nodes],
+    [onGraphChange],
   );
 
-  const handleEdgesChange = useCallback(
-    (changes: Parameters<typeof onEdgesChange>[0]) => {
-      onEdgesChange(changes);
-      setTimeout(() => {
-        onEdgesChangeCallback?.(edges);
-      }, 0);
-    },
-    [onEdgesChange, onEdgesChangeCallback, edges],
-  );
-
-  // Connect two nodes
   const onConnect = useCallback(
     (params: Connection) => {
-      setEdges((eds) =>
-        addEdge(
+      setEdges((eds) => {
+        const newEdges = addEdge(
           {
             ...params,
             style: { stroke: "var(--border-hover)", strokeWidth: 2 },
             animated: true,
           },
           eds,
-        ),
-      );
+        );
+        setTimeout(() => notifyChange(nodes, newEdges), 0);
+        return newEdges;
+      });
     },
-    [setEdges],
+    [setEdges, nodes, notifyChange],
   );
 
-  // Handle drag over for drop target
   const onDragOver = useCallback((event: React.DragEvent) => {
     event.preventDefault();
     event.dataTransfer.dropEffect = "move";
   }, []);
 
-  // Handle drop from palette
   const onDrop = useCallback(
     (event: React.DragEvent) => {
       event.preventDefault();
-
       const type = event.dataTransfer.getData("application/synthflow-node");
       if (!type || !reactFlowInstance || !reactFlowWrapper.current) return;
 
@@ -128,42 +108,83 @@ export default function WorkflowCanvas({
         data: { ...defaultNodeData[type] },
       };
 
-      setNodes((nds) => [...nds, newNode]);
+      setNodes((nds) => {
+        const updated = [...nds, newNode];
+        setTimeout(() => notifyChange(updated, edges), 0);
+        return updated;
+      });
     },
-    [reactFlowInstance, setNodes],
+    [reactFlowInstance, setNodes, edges, notifyChange],
   );
 
-  // Handle node click for selection
-  const onNodeClick = useCallback(
-    (_: React.MouseEvent, node: Node) => {
-      onNodeSelect?.(node);
-    },
-    [onNodeSelect],
-  );
+  const onNodeClick = useCallback((_: React.MouseEvent, node: Node) => {
+    setSelectedNode(node);
+  }, []);
 
-  // Handle pane click to deselect
   const onPaneClick = useCallback(() => {
-    onNodeSelect?.(null);
-  }, [onNodeSelect]);
+    setSelectedNode(null);
+  }, []);
 
-  // Handle node delete via backspace/delete key
+  // Update node data from config panel
+  const handleNodeUpdate = useCallback(
+    (nodeId: string, newData: Record<string, unknown>) => {
+      setNodes((nds) => {
+        const updated = nds.map((n) =>
+          n.id === nodeId ? { ...n, data: newData } : n,
+        );
+        // Update selectedNode to reflect changes
+        const updatedNode = updated.find((n) => n.id === nodeId);
+        if (updatedNode) setSelectedNode(updatedNode);
+        setTimeout(() => notifyChange(updated, edges), 0);
+        return updated;
+      });
+    },
+    [setNodes, edges, notifyChange],
+  );
+
+  // Delete node from config panel
+  const handleNodeDelete = useCallback(
+    (nodeId: string) => {
+      setNodes((nds) => {
+        const updated = nds.filter((n) => n.id !== nodeId);
+        setTimeout(() => notifyChange(updated, edges), 0);
+        return updated;
+      });
+      setEdges((eds) => {
+        const updated = eds.filter(
+          (e) => e.source !== nodeId && e.target !== nodeId,
+        );
+        setTimeout(() => notifyChange(nodes, updated), 0);
+        return updated;
+      });
+      setSelectedNode(null);
+    },
+    [setNodes, setEdges, nodes, edges, notifyChange],
+  );
+
   const onKeyDown = useCallback(
     (event: React.KeyboardEvent) => {
       if (event.key === "Backspace" || event.key === "Delete") {
-        setNodes((nds) => nds.filter((n) => !n.selected));
-        setEdges((eds) => eds.filter((e) => !e.selected));
-        onNodeSelect?.(null);
+        const selectedNodes = nodes.filter((n) => n.selected);
+        if (selectedNodes.length > 0) {
+          const selectedIds = new Set(selectedNodes.map((n) => n.id));
+          setNodes((nds) => nds.filter((n) => !n.selected));
+          setEdges((eds) =>
+            eds.filter(
+              (e) => !selectedIds.has(e.source) && !selectedIds.has(e.target),
+            ),
+          );
+          setSelectedNode(null);
+        }
       }
     },
-    [setNodes, setEdges, onNodeSelect],
+    [nodes, setNodes, setEdges],
   );
 
   return (
     <div className="flex h-full">
-      {/* Node palette sidebar */}
       <NodePalette />
 
-      {/* Canvas */}
       <div
         ref={reactFlowWrapper}
         className="flex-1"
@@ -174,8 +195,8 @@ export default function WorkflowCanvas({
         <ReactFlow
           nodes={nodes}
           edges={edges}
-          onNodesChange={handleNodesChange}
-          onEdgesChange={handleEdgesChange}
+          onNodesChange={onNodesChange}
+          onEdgesChange={onEdgesChange}
           onConnect={onConnect}
           onInit={setReactFlowInstance}
           onDrop={onDrop}
@@ -225,6 +246,16 @@ export default function WorkflowCanvas({
           />
         </ReactFlow>
       </div>
+
+      {/* Config panel */}
+      {selectedNode && (
+        <NodeConfigPanel
+          node={selectedNode}
+          onUpdate={handleNodeUpdate}
+          onDelete={handleNodeDelete}
+          onClose={() => setSelectedNode(null)}
+        />
+      )}
     </div>
   );
 }
