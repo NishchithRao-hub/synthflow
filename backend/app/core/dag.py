@@ -136,3 +136,113 @@ def _detect_cycles(node_ids: set, outgoing: dict) -> None:
     for node in node_ids:
         if color[node] == WHITE:
             dfs(node, [])
+
+
+def topological_sort(graph_data: dict) -> list[str]:
+    """
+    Perform a topological sort on the workflow graph using Kahn's algorithm.
+
+    Returns a list of node IDs in execution order, where every node appears
+    after all of its dependencies.
+
+    This should only be called AFTER validate_workflow_graph() has passed,
+    as it assumes the graph is a valid DAG.
+
+    The algorithm:
+    1. Calculate in-degree (number of incoming edges) for each node
+    2. Start with all nodes that have in-degree 0 (the trigger)
+    3. Process each node: decrement in-degree of its neighbors
+    4. When a neighbor's in-degree reaches 0, add it to the queue
+    5. Repeat until all nodes are processed
+    """
+    nodes = graph_data.get("nodes", [])
+    edges = graph_data.get("edges", [])
+
+    node_ids = {node["id"] for node in nodes}
+
+    # Build adjacency list and in-degree count
+    outgoing = defaultdict(list)
+    in_degree = {nid: 0 for nid in node_ids}
+
+    for edge in edges:
+        source = edge["source"]
+        target = edge["target"]
+        outgoing[source].append(target)
+        in_degree[target] += 1
+
+    # Start with nodes that have no incoming edges (in-degree 0)
+    queue = [nid for nid in node_ids if in_degree[nid] == 0]
+    # Sort for deterministic ordering when multiple nodes have same in-degree
+    queue.sort()
+
+    execution_order = []
+
+    while queue:
+        # Process the first node in the queue
+        current = queue.pop(0)
+        execution_order.append(current)
+
+        # Reduce in-degree of all neighbors
+        for neighbor in sorted(outgoing[current]):
+            in_degree[neighbor] -= 1
+            if in_degree[neighbor] == 0:
+                queue.append(neighbor)
+        # Keep queue sorted for deterministic order
+        queue.sort()
+
+    # Safety check — if we didn't process all nodes, there's a cycle
+    # (This shouldn't happen if validate_workflow_graph was called first)
+    if len(execution_order) != len(node_ids):
+        processed = set(execution_order)
+        stuck = node_ids - processed
+        raise DAGValidationError(
+            f"Could not determine execution order. Stuck nodes: {', '.join(stuck)}"
+        )
+
+    return execution_order
+
+
+def get_execution_levels(graph_data: dict) -> list[list[str]]:
+    """
+    Group nodes into execution levels. Nodes within the same level have
+    no dependencies on each other and could theoretically execute in parallel.
+
+    Returns a list of levels, where each level is a list of node IDs.
+
+    Example for: trigger -> ai -> [action_1, action_2]
+    Returns: [["trigger"], ["ai"], ["action_1", "action_2"]]
+
+    This is useful for understanding the parallelism potential of a workflow
+    and for displaying execution progress in the UI.
+    """
+    nodes = graph_data.get("nodes", [])
+    edges = graph_data.get("edges", [])
+
+    node_ids = {node["id"] for node in nodes}
+
+    outgoing = defaultdict(list)
+    in_degree = {nid: 0 for nid in node_ids}
+
+    for edge in edges:
+        source = edge["source"]
+        target = edge["target"]
+        outgoing[source].append(target)
+        in_degree[target] += 1
+
+    # Start with in-degree 0 nodes
+    current_level = sorted([nid for nid in node_ids if in_degree[nid] == 0])
+    levels = []
+
+    while current_level:
+        levels.append(current_level)
+        next_level = []
+
+        for node in current_level:
+            for neighbor in outgoing[node]:
+                in_degree[neighbor] -= 1
+                if in_degree[neighbor] == 0:
+                    next_level.append(neighbor)
+
+        current_level = sorted(next_level)
+
+    return levels
