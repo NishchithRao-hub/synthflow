@@ -40,5 +40,12 @@ coverage/
 htmlcov/
 project-roadmap-v2.md
 
-# Frontend env
+# === Frontend ===
 .env.local
+
+# === Backend ===
+backend/test_context.py
+backend/test_execution_e2e.py
+backend/test_executors.py
+backend/test_dag.py
+backend/test_topo_sort.py
