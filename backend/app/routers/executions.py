@@ -34,10 +34,13 @@ async def execute_workflow(
     """
     Trigger a manual workflow execution.
 
-    Creates a run, then executes it synchronously (will be async via
-    Celery in Phase 5). Returns 202 Accepted with the run ID.
+    Creates a run record, enqueues it for async execution via Celery,
+    and returns 202 Accepted immediately. The client can poll
+    GET /api/runs/{run_id} to check execution progress.
     """
-    # Create the run record
+    from app.worker.tasks import execute_workflow_run_task
+
+    # Create the run record (validates workflow, checks concurrency)
     run = await execution_service.create_workflow_run(
         db=db,
         workflow_id=workflow_id,
@@ -46,8 +49,8 @@ async def execute_workflow(
         trigger_input=data.input,
     )
 
-    # Execute synchronously for now (Phase 5 moves this to Celery)
-    run = await execution_service.execute_workflow_run(db=db, run_id=run.id)
+    # Enqueue for async execution
+    execute_workflow_run_task.delay(run.id)
 
     return ExecuteWorkflowResponse(
         run_id=run.id,
