@@ -49,3 +49,4 @@ backend/test_execution_e2e.py
 backend/test_executors.py
 backend/test_dag.py
 backend/test_topo_sort.py
+backend/test_async_execution.py
