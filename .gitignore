@@ -50,3 +50,4 @@ backend/test_executors.py
 backend/test_dag.py
 backend/test_topo_sort.py
 backend/test_async_execution.py
+backend/test_ai_enhanced.py
