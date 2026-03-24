@@ -1,58 +1,47 @@
 # backend/app/worker/database.py
 
-import asyncio
-from collections.abc import AsyncGenerator
-from contextlib import asynccontextmanager
+from contextlib import contextmanager
 
-from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
+from sqlalchemy import create_engine
+from sqlalchemy.orm import Session, sessionmaker
 
 from app.core.config import settings
 
-# Create a separate engine for the worker process
-# (each process should have its own engine/pool)
-_engine = create_async_engine(
-    settings.DATABASE_URL,
+# Convert async URL to sync URL for the worker
+# postgresql+asyncpg://... → postgresql+psycopg2://... or postgresql://...
+SYNC_DATABASE_URL = settings.DATABASE_URL.replace(
+    "postgresql+asyncpg", "postgresql+psycopg2"
+)
+
+# Create a synchronous engine for the worker process
+_sync_engine = create_engine(
+    SYNC_DATABASE_URL,
     echo=False,
     pool_size=3,
     max_overflow=5,
     pool_pre_ping=True,
 )
 
-_session_factory = async_sessionmaker(
-    _engine,
-    class_=AsyncSession,
+_sync_session_factory = sessionmaker(
+    bind=_sync_engine,
+    class_=Session,
     expire_on_commit=False,
 )
 
 
-@asynccontextmanager
-async def get_worker_db() -> AsyncGenerator[AsyncSession, None]:
+@contextmanager
+def get_worker_db():
     """
-    Provide a database session for worker tasks.
+    Provide a synchronous database session for worker tasks.
 
-    Unlike the FastAPI dependency, this is a context manager
-    that workers use explicitly.
+    Celery workers use sync sessions to avoid event loop conflicts.
     """
-    async with _session_factory() as session:
-        try:
-            yield session
-            await session.commit()
-        except Exception:
-            await session.rollback()
-            raise
-        finally:
-            await session.close()
-
-
-def run_async(coro):
-    """
-    Run an async coroutine from a synchronous Celery task.
-
-    Creates a new event loop for each task execution.
-    This is the bridge between Celery's sync world and our async codebase.
-    """
-    loop = asyncio.new_event_loop()
+    session = _sync_session_factory()
     try:
-        return loop.run_until_complete(coro)
+        yield session
+        session.commit()
+    except Exception:
+        session.rollback()
+        raise
     finally:
-        loop.close()
+        session.close()
