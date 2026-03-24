@@ -49,7 +49,7 @@ export default function AIConfig({ config, onChange }: AIConfigProps) {
           Model
         </label>
         <select
-          value={(config.model as string) || "ollama/mistral"}
+          value={(config.model as string) || "ollama/phi3:mini"}
           onChange={(e) => onChange({ ...config, model: e.target.value })}
           className="w-full px-3 py-2 rounded-lg text-sm outline-none"
           style={{
