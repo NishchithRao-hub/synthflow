@@ -9,7 +9,7 @@ class LLMConfig:
     """Configuration for an LLM request."""
 
     model: str
-    timeout: int = 100  # seconds
+    timeout: int = 180  # seconds
     temperature: float = 0.7
     max_tokens: int | None = None
     api_key: str | None = None  # For BYOK providers

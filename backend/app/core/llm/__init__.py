@@ -12,7 +12,7 @@ PROVIDER_MAP: dict[str, type[LLMProvider]] = {
 
 def get_provider(model_string: str) -> tuple[LLMProvider, str]:
     """
-    Parse a model string like 'ollama/mistral' or 'openai/gpt-4o-mini'
+    Parse a model string like 'ollama/phi3:mini' or 'openai/gpt-4o-mini'
     and return the appropriate provider instance and model name.
 
     Returns:
@@ -21,7 +21,7 @@ def get_provider(model_string: str) -> tuple[LLMProvider, str]:
     if "/" not in model_string:
         raise ValueError(
             f"Invalid model string: '{model_string}'. "
-            f"Expected format: 'provider/model' (e.g., 'ollama/mistral')"
+            f"Expected format: 'provider/model' (e.g., 'ollama/phi3:mini')"
         )
 
     provider_name, model_name = model_string.split("/", 1)
