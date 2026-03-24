@@ -16,6 +16,7 @@ from app.core.exceptions import (
     synthflow_exception_handler,
 )
 from app.routers import auth, executions, workflows
+from app.routers import settings as settings_router
 
 logger = structlog.get_logger()
 
@@ -71,6 +72,7 @@ async def request_logging_middleware(request: Request, call_next):
 app.include_router(workflows.router)
 app.include_router(auth.router)
 app.include_router(executions.router)
+app.include_router(settings_router.router)
 
 
 # --- Root and Health ---

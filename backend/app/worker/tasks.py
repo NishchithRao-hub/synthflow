@@ -1,12 +1,30 @@
 # backend/app/worker/tasks.py
 
+import asyncio
+from datetime import datetime, timezone
+
 import structlog
 from celery import states
+from sqlalchemy import select
 
+from app.core.dag import topological_sort, validate_workflow_graph
+from app.core.execution_context import ExecutionContext, NodeResult
+from app.core.executors import get_executor
+from app.models.node_execution_log import NodeExecutionLog
+from app.models.workflow import Workflow
+from app.models.workflow_run import WorkflowRun
 from app.worker.celery_app import celery_app
-from app.worker.database import get_worker_db, run_async
+from app.worker.database import get_worker_db
 
 logger = structlog.get_logger()
+
+# Status constants
+STATUS_RUNNING = "running"
+STATUS_COMPLETED = "completed"
+STATUS_FAILED = "failed"
+NODE_COMPLETED = "completed"
+NODE_FAILED = "failed"
+NODE_SKIPPED = "skipped"
 
 
 @celery_app.task(
@@ -18,16 +36,10 @@ logger = structlog.get_logger()
 )
 def execute_workflow_run_task(self, run_id: str) -> dict:
     """
-    Celery task that executes a workflow run in the background.
+    Celery task that executes a workflow run synchronously.
 
-    This is a synchronous Celery task that bridges to our async
-    execution service via run_async().
-
-    Args:
-        run_id: The WorkflowRun ID to execute
-
-    Returns:
-        Dict with run_id, status, and duration_ms
+    Uses sync DB sessions for database access and asyncio.run()
+    only for async executor calls (HTTP, LLM).
     """
     logger.info(
         "celery_task_started",
@@ -35,11 +47,10 @@ def execute_workflow_run_task(self, run_id: str) -> dict:
         run_id=run_id,
     )
 
-    # Update task state to STARTED
     self.update_state(state=states.STARTED, meta={"run_id": run_id})
 
     try:
-        result = run_async(_execute(run_id))
+        result = _execute_run(run_id)
 
         logger.info(
             "celery_task_completed",
@@ -59,9 +70,8 @@ def execute_workflow_run_task(self, run_id: str) -> dict:
             error=str(e),
         )
 
-        # Mark the run as failed in the database
         try:
-            run_async(_mark_run_failed(run_id, str(e)))
+            _mark_run_failed(run_id, str(e))
         except Exception as db_err:
             logger.error(
                 "celery_task_cleanup_failed",
@@ -72,22 +82,154 @@ def execute_workflow_run_task(self, run_id: str) -> dict:
         raise
 
 
-async def _execute(run_id: str) -> dict:
-    """
-    Async function that performs the actual workflow execution.
+def _execute_run(run_id: str) -> dict:
+    """Execute a workflow run using sync DB and async executors."""
 
-    Runs inside its own database session, separate from the API.
-    """
-    from app.services.execution_service import execute_workflow_run
+    with get_worker_db() as db:
+        # Load run
+        run = db.execute(
+            select(WorkflowRun).where(WorkflowRun.id == run_id)
+        ).scalar_one_or_none()
 
-    async with get_worker_db() as db:
-        run = await execute_workflow_run(db=db, run_id=run_id)
+        if run is None:
+            raise RuntimeError(f"WorkflowRun {run_id} not found")
+
+        # Load workflow
+        workflow = db.execute(
+            select(Workflow).where(Workflow.id == run.workflow_id)
+        ).scalar_one_or_none()
+
+        if workflow is None:
+            run.status = STATUS_FAILED
+            run.workflow_deleted = True
+            run.completed_at = datetime.now(timezone.utc)
+            db.flush()
+            return {
+                "run_id": run.id,
+                "workflow_id": run.workflow_id,
+                "status": STATUS_FAILED,
+                "duration_ms": 0,
+            }
+
+        graph_data = workflow.graph_data
+        node_map = {node["id"]: node for node in graph_data.get("nodes", [])}
+
+        # Validate and sort
+        validate_workflow_graph(graph_data)
+        execution_order = topological_sort(graph_data)
+
+        # Find trigger node
+        trigger_id = None
+        for node in graph_data.get("nodes", []):
+            if node.get("type") == "trigger":
+                trigger_id = node["id"]
+                break
+
+        # Update run status
+        run.status = STATUS_RUNNING
+        run.started_at = datetime.now(timezone.utc)
+        db.flush()
+
+        # Create execution context
+        context = ExecutionContext(run_id=run.id, workflow_id=workflow.id)
+
+        if trigger_id:
+            context.set_trigger_output(
+                trigger_id,
+                {
+                    "webhook_body": run.trigger_input,
+                },
+            )
+
+        # Track failures
+        failed_nodes: set[str] = set()
+        dependencies = _build_dependency_map(graph_data)
+
+        # Execute nodes
+        for node_id in execution_order:
+            node_data = node_map.get(node_id)
+            if node_data is None:
+                continue
+
+            node_type = node_data.get("type", "")
+            node_config = node_data.get("config", {})
+
+            # Check upstream failures
+            upstream_failed = dependencies.get(node_id, set()) & failed_nodes
+            if upstream_failed:
+                skip_result = NodeResult(
+                    status=NODE_SKIPPED,
+                    error=f"Skipped: upstream node(s) failed: {', '.join(upstream_failed)}",
+                )
+                context.set_node_result(node_id, skip_result)
+                _create_node_log(db, run.id, node_id, node_type, skip_result)
+                failed_nodes.add(node_id)
+                continue
+
+            # Create running log entry
+            log_entry = NodeExecutionLog(
+                run_id=run.id,
+                node_id=node_id,
+                node_type=node_type,
+                status="running",
+                input=node_config,
+                attempt=1,
+            )
+            db.add(log_entry)
+            db.flush()
+
+            # Execute the node (async executors run via asyncio.run)
+            executor = get_executor(node_type)
+            node_result = asyncio.run(
+                executor.execute(
+                    node_id=node_id,
+                    node_type=node_type,
+                    node_config=node_config,
+                    context=context,
+                )
+            )
+
+            # Store result
+            context.set_node_result(node_id, node_result)
+
+            # Update log
+            log_entry.status = node_result.status
+            log_entry.output = node_result.output
+            log_entry.error = node_result.error
+            log_entry.duration_ms = node_result.duration_ms
+            db.flush()
+
+            if node_result.status == NODE_FAILED:
+                failed_nodes.add(node_id)
+                logger.warning(
+                    "node_execution_failed",
+                    node_id=node_id,
+                    error=node_result.error,
+                    run_id=run.id,
+                )
+
+        # Finalize run
+        run.status = STATUS_FAILED if failed_nodes else STATUS_COMPLETED
+        run.completed_at = datetime.now(timezone.utc)
+        run.execution_context = context.to_dict()
+        db.flush()
 
         # Calculate duration
         duration_ms = None
-        if run.started_at and run.completed_at:
-            delta = run.completed_at - run.started_at
+        started_at = run.started_at
+        completed_at = run.completed_at
+        if started_at is not None and completed_at is not None:
+            delta = completed_at - started_at
             duration_ms = round(delta.total_seconds() * 1000)
+
+        logger.info(
+            "workflow_run_finished",
+            run_id=run.id,
+            workflow_id=workflow.id,
+            status=run.status,
+            total_nodes=len(execution_order),
+            failed_nodes=len(failed_nodes),
+        )
 
         return {
             "run_id": run.id,
@@ -97,28 +239,48 @@ async def _execute(run_id: str) -> dict:
         }
 
 
-async def _mark_run_failed(run_id: str, error: str) -> None:
-    """
-    Mark a run as failed if the task crashes unexpectedly.
-
-    This is a safety net for unhandled exceptions.
-    """
-    from datetime import datetime, timezone
-
-    from sqlalchemy import select
-
-    from app.models.workflow_run import WorkflowRun
-
-    async with get_worker_db() as db:
-        query = select(WorkflowRun).where(WorkflowRun.id == run_id)
-        result = await db.execute(query)
-        run = result.scalar_one_or_none()
+def _mark_run_failed(run_id: str, error: str) -> None:
+    """Mark a run as failed if the task crashes unexpectedly."""
+    with get_worker_db() as db:
+        run = db.execute(
+            select(WorkflowRun).where(WorkflowRun.id == run_id)
+        ).scalar_one_or_none()
 
         if run and run.status in ("pending", "running"):
-            run.status = "failed"
+            run.status = STATUS_FAILED
             run.completed_at = datetime.now(timezone.utc)
             run.execution_context = {
                 "error": f"Task failed unexpectedly: {error}",
             }
-            await db.flush()
-            logger.info("run_marked_failed", run_id=run_id, error=error)
+            db.flush()
+
+
+def _build_dependency_map(graph_data: dict) -> dict[str, set[str]]:
+    """Build node_id -> set of direct upstream node_ids."""
+    edges = graph_data.get("edges", [])
+    deps: dict[str, set[str]] = {}
+    for edge in edges:
+        target = edge["target"]
+        source = edge["source"]
+        if target not in deps:
+            deps[target] = set()
+        deps[target].add(source)
+    return deps
+
+
+def _create_node_log(
+    db, run_id: str, node_id: str, node_type: str, result: NodeResult
+) -> None:
+    """Create a node execution log entry."""
+    log = NodeExecutionLog(
+        run_id=run_id,
+        node_id=node_id,
+        node_type=node_type,
+        status=result.status,
+        output=result.output,
+        error=result.error,
+        duration_ms=result.duration_ms,
+        attempt=1,
+    )
+    db.add(log)
+    db.flush()

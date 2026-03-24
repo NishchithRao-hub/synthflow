@@ -23,6 +23,7 @@ class User(Base, TimestampMixin):
     oauth_id: Mapped[str] = mapped_column(String(255), unique=True)
     stripe_customer_id: Mapped[str | None] = mapped_column(String(255), nullable=True)
     plan: Mapped[str] = mapped_column(String(50), default="free")
+    encrypted_openai_key: Mapped[str | None] = mapped_column(String(500), nullable=True)
 
     # Relationships
     workflows: Mapped[list["Workflow"]] = relationship(
