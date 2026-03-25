@@ -8,6 +8,7 @@ import { useAuth } from "@/contexts/auth-context";
 import { useWorkflow, useSaveWorkflow } from "@/hooks/use-workflow";
 import type { Node, Edge } from "@xyflow/react";
 import WorkflowCanvas from "@/components/workflow/workflow-canvas";
+import WebhookUrlBar from "@/components/workflow/webhook-url-bar";
 import Button from "@/components/ui/button";
 import { ArrowLeft, Save, Check, AlertCircle } from "lucide-react";
 
@@ -264,6 +265,9 @@ export default function WorkflowEditorPage() {
           </Button>
         </div>
       </div>
+
+      {/* Webhook URL */}
+      <WebhookUrlBar workflowId={workflowId} />
 
       {/* Canvas */}
       <div className="flex-1">
