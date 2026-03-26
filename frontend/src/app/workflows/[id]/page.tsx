@@ -6,11 +6,13 @@ import { useParams, useRouter } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useAuth } from "@/contexts/auth-context";
 import { useWorkflow, useSaveWorkflow } from "@/hooks/use-workflow";
+import api from "@/lib/api";
 import type { Node, Edge } from "@xyflow/react";
 import WorkflowCanvas from "@/components/workflow/workflow-canvas";
 import WebhookUrlBar from "@/components/workflow/webhook-url-bar";
+import RunMonitor from "@/components/workflow/run-monitor";
 import Button from "@/components/ui/button";
-import { ArrowLeft, Save, Check, AlertCircle } from "lucide-react";
+import { ArrowLeft, Save, Check, AlertCircle, Play } from "lucide-react";
 
 export default function WorkflowEditorPage() {
   const params = useParams();
@@ -33,13 +35,17 @@ export default function WorkflowEditorPage() {
     "idle" | "saving" | "saved" | "error"
   >("idle");
 
+  // Execution state
+  const [activeRunId, setActiveRunId] = useState<string | null>(null);
+  const [isExecuting, setIsExecuting] = useState(false);
+  const [showRunMonitor, setShowRunMonitor] = useState(false);
+
   useEffect(() => {
     if (!authLoading && !isAuthenticated) {
       router.replace("/login");
     }
   }, [authLoading, isAuthenticated, router]);
 
-  // Clear "saved" status after 2 seconds
   useEffect(() => {
     if (saveStatus === "saved") {
       const timer = setTimeout(() => setSaveStatus("idle"), 2000);
@@ -47,7 +53,6 @@ export default function WorkflowEditorPage() {
     }
   }, [saveStatus]);
 
-  // Warn before leaving with unsaved changes
   useEffect(() => {
     const handleBeforeUnload = (e: BeforeUnloadEvent) => {
       if (hasUnsavedChanges) {
@@ -64,12 +69,11 @@ export default function WorkflowEditorPage() {
     setSaveStatus("idle");
   }, []);
 
-  const handleSave = async () => {
+  const handleSave = useCallback(async () => {
     setSaveStatus("saving");
 
     const { nodes, edges } = graphRef.current;
 
-    // Convert React Flow nodes/edges back to backend format
     const graphData = {
       nodes: nodes.map((node) => {
         const data = node.data as Record<string, unknown>;
@@ -100,9 +104,35 @@ export default function WorkflowEditorPage() {
     } catch {
       setSaveStatus("error");
     }
+  }, [saveWorkflow]);
+
+  const handleExecute = async () => {
+    // Save first if there are unsaved changes
+    if (hasUnsavedChanges) {
+      await handleSave();
+    }
+
+    setIsExecuting(true);
+
+    try {
+      const response = await api.post(`/api/workflows/${workflowId}/execute`, {
+        input: {
+          triggered_from: "editor",
+          timestamp: new Date().toISOString(),
+        },
+      });
+
+      const runId = response.data.run_id;
+      setActiveRunId(runId);
+      setShowRunMonitor(true);
+    } catch (e: unknown) {
+      const errorMessage = e instanceof Error ? e.message : "Execution failed";
+      alert(`Failed to execute workflow: ${errorMessage}`);
+    } finally {
+      setIsExecuting(false);
+    }
   };
 
-  // Keyboard shortcut: Ctrl+S to save
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if ((e.ctrlKey || e.metaKey) && e.key === "s") {
@@ -112,9 +142,8 @@ export default function WorkflowEditorPage() {
     };
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  });
+  }, [handleSave]);
 
-  // Convert backend graph_data to React Flow format
   const initialNodes: Node[] = (workflow?.graph_data?.nodes || []).map(
     (node) => ({
       id: node.id,
@@ -138,7 +167,6 @@ export default function WorkflowEditorPage() {
     }),
   );
 
-  // Initialize graphRef with loaded data
   useEffect(() => {
     if (initialNodes.length > 0) {
       graphRef.current = { nodes: initialNodes, edges: initialEdges };
@@ -233,8 +261,7 @@ export default function WorkflowEditorPage() {
           </div>
         </div>
 
-        <div className="flex items-center gap-3">
-          {/* Save status indicator */}
+        <div className="flex items-center gap-2">
           {saveStatus === "saved" && (
             <span
               className="flex items-center gap-1 text-xs"
@@ -256,6 +283,7 @@ export default function WorkflowEditorPage() {
 
           <Button
             size="sm"
+            variant="secondary"
             onClick={handleSave}
             loading={saveStatus === "saving"}
             disabled={!hasUnsavedChanges && saveStatus !== "error"}
@@ -263,19 +291,37 @@ export default function WorkflowEditorPage() {
             <Save size={14} />
             Save
           </Button>
+
+          <Button size="sm" onClick={handleExecute} loading={isExecuting}>
+            <Play size={14} />
+            Execute
+          </Button>
         </div>
       </div>
 
       {/* Webhook URL */}
       <WebhookUrlBar workflowId={workflowId} />
 
-      {/* Canvas */}
-      <div className="flex-1">
-        <WorkflowCanvas
-          initialNodes={initialNodes}
-          initialEdges={initialEdges}
-          onGraphChange={handleGraphChange}
-        />
+      {/* Canvas + Run Monitor */}
+      <div className="flex-1 flex">
+        <div className="flex-1">
+          <WorkflowCanvas
+            initialNodes={initialNodes}
+            initialEdges={initialEdges}
+            onGraphChange={handleGraphChange}
+          />
+        </div>
+
+        {/* Run Monitor Panel */}
+        {showRunMonitor && (
+          <RunMonitor
+            runId={activeRunId}
+            onClose={() => {
+              setShowRunMonitor(false);
+              setActiveRunId(null);
+            }}
+          />
+        )}
       </div>
     </div>
   );
