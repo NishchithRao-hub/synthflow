@@ -15,7 +15,7 @@ from app.core.exceptions import (
     generic_exception_handler,
     synthflow_exception_handler,
 )
-from app.routers import auth, executions, webhooks, workflows
+from app.routers import auth, executions, webhooks, workflows, ws
 from app.routers import settings as settings_router
 
 logger = structlog.get_logger()
@@ -74,6 +74,7 @@ app.include_router(auth.router)
 app.include_router(executions.router)
 app.include_router(settings_router.router)
 app.include_router(webhooks.router)
+app.include_router(ws.router)
 
 
 # --- Root and Health ---
