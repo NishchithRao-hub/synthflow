@@ -84,6 +84,11 @@ def execute_workflow_run_task(self, run_id: str) -> dict:
 
 def _execute_run(run_id: str) -> dict:
     """Execute a workflow run using sync DB and async executors."""
+    from app.core.pubsub import (
+        publish_node_status,
+        publish_run_completed,
+        publish_run_started,
+    )
 
     with get_worker_db() as db:
         # Load run
@@ -130,6 +135,9 @@ def _execute_run(run_id: str) -> dict:
         run.started_at = datetime.now(timezone.utc)
         db.flush()
 
+        # Publish run started
+        publish_run_started(run.id, workflow.id)
+
         # Create execution context
         context = ExecutionContext(run_id=run.id, workflow_id=workflow.id)
 
@@ -164,7 +172,19 @@ def _execute_run(run_id: str) -> dict:
                 context.set_node_result(node_id, skip_result)
                 _create_node_log(db, run.id, node_id, node_type, skip_result)
                 failed_nodes.add(node_id)
+
+                # Publish skip
+                publish_node_status(
+                    run.id,
+                    node_id,
+                    node_type,
+                    NODE_SKIPPED,
+                    error=skip_result.error,
+                )
                 continue
+
+            # Publish node running
+            publish_node_status(run.id, node_id, node_type, "running")
 
             # Create running log entry
             log_entry = NodeExecutionLog(
@@ -178,7 +198,7 @@ def _execute_run(run_id: str) -> dict:
             db.add(log_entry)
             db.flush()
 
-            # Execute the node (async executors run via asyncio.run)
+            # Execute the node
             executor = get_executor(node_type)
             node_result = asyncio.run(
                 executor.execute(
@@ -198,6 +218,17 @@ def _execute_run(run_id: str) -> dict:
             log_entry.error = node_result.error
             log_entry.duration_ms = node_result.duration_ms
             db.flush()
+
+            # Publish node result
+            publish_node_status(
+                run.id,
+                node_id,
+                node_type,
+                node_result.status,
+                duration_ms=node_result.duration_ms,
+                output=node_result.output,
+                error=node_result.error,
+            )
 
             if node_result.status == NODE_FAILED:
                 failed_nodes.add(node_id)
@@ -221,6 +252,9 @@ def _execute_run(run_id: str) -> dict:
         if started_at is not None and completed_at is not None:
             delta = completed_at - started_at
             duration_ms = round(delta.total_seconds() * 1000)
+
+        # Publish run completed
+        publish_run_completed(run.id, workflow.id, run.status, duration_ms)
 
         logger.info(
             "workflow_run_finished",
