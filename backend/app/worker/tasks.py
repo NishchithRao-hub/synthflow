@@ -49,6 +49,15 @@ def execute_workflow_run_task(self, run_id: str) -> dict:
 
     self.update_state(state=states.STARTED, meta={"run_id": run_id})
 
+    # Bind run context for structured logging
+    import structlog as structlog_module
+
+    structlog_module.contextvars.clear_contextvars()
+    structlog_module.contextvars.bind_contextvars(
+        run_id=run_id,
+        task_id=self.request.id,
+    )
+
     try:
         result = _execute_run(run_id)
 

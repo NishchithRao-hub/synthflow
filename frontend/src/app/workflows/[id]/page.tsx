@@ -12,7 +12,14 @@ import WorkflowCanvas from "@/components/workflow/workflow-canvas";
 import WebhookUrlBar from "@/components/workflow/webhook-url-bar";
 import RunMonitor from "@/components/workflow/run-monitor";
 import Button from "@/components/ui/button";
-import { ArrowLeft, Save, Check, AlertCircle, Play } from "lucide-react";
+import {
+  ArrowLeft,
+  Save,
+  Check,
+  AlertCircle,
+  Play,
+  History,
+} from "lucide-react";
 
 export default function WorkflowEditorPage() {
   const params = useParams();
@@ -290,6 +297,15 @@ export default function WorkflowEditorPage() {
           >
             <Save size={14} />
             Save
+          </Button>
+
+          <Button
+            size="sm"
+            variant="ghost"
+            onClick={() => router.push(`/workflows/${workflowId}/runs`)}
+          >
+            <History size={14} />
+            Runs
           </Button>
 
           <Button size="sm" onClick={handleExecute} loading={isExecuting}>
