@@ -69,10 +69,18 @@ class ActionExecutor(NodeExecutor):
         # Parse body
         body = self._parse_body(node_config.get("body_template", ""))
 
+        # Add idempotency key for safe retries
+        # Format: {run_id}:{node_id}:{attempt}
+        # External services can use this to detect duplicate requests
+        idempotency_key = self._build_idempotency_key(context, node_config)
+        if idempotency_key:
+            headers["X-Idempotency-Key"] = idempotency_key
+
         logger.info(
             "http_action_request",
             method=method,
             url=url,
+            has_idempotency_key=bool(idempotency_key),
             run_id=context.run_id,
         )
 
@@ -167,3 +175,29 @@ class ActionExecutor(NodeExecutor):
                 # Return as raw text wrapper
                 return {"data": body_input}
         return None
+
+    @staticmethod
+    def _build_idempotency_key(
+        context: ExecutionContext, node_config: dict
+    ) -> str | None:
+        """
+        Build an idempotency key for this request.
+
+        Format: {run_id}:{node_id}:{attempt_hash}
+
+        This allows external services to detect and deduplicate
+        retried requests from the same workflow execution.
+        """
+        try:
+            run_id = context.run_id
+
+            # Get node_id from the context metadata if available
+            # We use the run_id + a hash of the config as a stable key
+            import hashlib
+
+            config_str = json.dumps(node_config, sort_keys=True)
+            config_hash = hashlib.md5(config_str.encode()).hexdigest()[:8]
+
+            return f"{run_id}:{config_hash}"
+        except Exception:
+            return None

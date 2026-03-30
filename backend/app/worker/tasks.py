@@ -10,6 +10,8 @@ from sqlalchemy import select
 from app.core.dag import topological_sort, validate_workflow_graph
 from app.core.execution_context import ExecutionContext, NodeResult
 from app.core.executors import get_executor
+from app.core.retry import RetryPolicy, execute_with_retry
+from app.core.timeout import RunTimeoutTracker, TimeoutConfig
 from app.models.node_execution_log import NodeExecutionLog
 from app.models.workflow import Workflow
 from app.models.workflow_run import WorkflowRun
@@ -147,6 +149,10 @@ def _execute_run(run_id: str) -> dict:
         # Publish run started
         publish_run_started(run.id, workflow.id)
 
+        # Start run timeout tracker
+        run_timer = RunTimeoutTracker(timeout_seconds=300)  # 5 minute global limit
+        run_timer.start()
+
         # Create execution context
         context = ExecutionContext(run_id=run.id, workflow_id=workflow.id)
 
@@ -170,6 +176,52 @@ def _execute_run(run_id: str) -> dict:
 
             node_type = node_data.get("type", "")
             node_config = node_data.get("config", {})
+
+            # Check global run timeout
+            if run_timer.is_expired():
+                timeout_result = NodeResult(
+                    status=NODE_FAILED,
+                    error=f"Run timed out after {run_timer.timeout_seconds} seconds",
+                )
+                context.set_node_result(node_id, timeout_result)
+                _create_node_log(db, run.id, node_id, node_type, timeout_result)
+                failed_nodes.add(node_id)
+
+                publish_node_status(
+                    run.id,
+                    node_id,
+                    node_type,
+                    NODE_FAILED,
+                    error=timeout_result.error,
+                )
+
+                logger.warning(
+                    "run_timeout_exceeded",
+                    node_id=node_id,
+                    elapsed=run_timer.elapsed_seconds(),
+                    run_id=run.id,
+                )
+                # Mark all remaining nodes as timed out
+                remaining_idx = execution_order.index(node_id)
+                for remaining_id in execution_order[remaining_idx + 1 :]:
+                    remaining_data = node_map.get(remaining_id, {})
+                    remaining_type = remaining_data.get("type", "")
+                    skip_result = NodeResult(
+                        status=NODE_SKIPPED,
+                        error="Skipped: run timed out",
+                    )
+                    context.set_node_result(remaining_id, skip_result)
+                    _create_node_log(
+                        db, run.id, remaining_id, remaining_type, skip_result
+                    )
+                    publish_node_status(
+                        run.id,
+                        remaining_id,
+                        remaining_type,
+                        NODE_SKIPPED,
+                        error=skip_result.error,
+                    )
+                break
 
             # Check upstream failures
             upstream_failed = dependencies.get(node_id, set()) & failed_nodes
@@ -207,14 +259,30 @@ def _execute_run(run_id: str) -> dict:
             db.add(log_entry)
             db.flush()
 
-            # Execute the node
+            # Get retry policy from node config
+            retry_policy = RetryPolicy.from_node_config(node_config)
+
+            # Get retry policy and timeout from node config
+            retry_policy = RetryPolicy.from_node_config(node_config)
+            timeout_config = TimeoutConfig.from_node_config(node_type, node_config)
+
+            # Cap node timeout to remaining run time
+            node_timeout = min(
+                timeout_config.node_timeout,
+                int(run_timer.remaining_seconds()),
+            )
+
+            # Execute with retry and timeout
             executor = get_executor(node_type)
-            node_result = asyncio.run(
-                executor.execute(
+            node_result, total_attempts = asyncio.run(
+                execute_with_retry(
+                    executor=executor,
                     node_id=node_id,
                     node_type=node_type,
                     node_config=node_config,
                     context=context,
+                    retry_policy=retry_policy,
+                    timeout_seconds=node_timeout,
                 )
             )
 
@@ -226,7 +294,23 @@ def _execute_run(run_id: str) -> dict:
             log_entry.output = node_result.output
             log_entry.error = node_result.error
             log_entry.duration_ms = node_result.duration_ms
+            log_entry.attempt = total_attempts
             db.flush()
+
+            # Log additional retry attempts
+            if total_attempts > 1:
+                for retry_num in range(2, total_attempts + 1):
+                    retry_log = NodeExecutionLog(
+                        run_id=run.id,
+                        node_id=node_id,
+                        node_type=node_type,
+                        status="retried",
+                        input=node_config,
+                        error=f"Retry attempt {retry_num} of {total_attempts}",
+                        attempt=retry_num,
+                    )
+                    db.add(retry_log)
+                db.flush()
 
             # Publish node result
             publish_node_status(
@@ -249,7 +333,13 @@ def _execute_run(run_id: str) -> dict:
                 )
 
         # Finalize run
-        run.status = STATUS_FAILED if failed_nodes else STATUS_COMPLETED
+        if run_timer.is_expired():
+            run.status = "timed_out"
+        elif failed_nodes:
+            run.status = STATUS_FAILED
+        else:
+            run.status = STATUS_COMPLETED
+
         run.completed_at = datetime.now(timezone.utc)
         run.execution_context = context.to_dict()
         db.flush()
