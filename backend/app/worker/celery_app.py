@@ -30,13 +30,25 @@ celery_app.conf.update(
     task_time_limit=300,  # 5 minutes — hard kill
     # Retry on connection failure at startup
     broker_connection_retry_on_startup=True,
-    # Task routes (all execution tasks go to the 'execution' queue)
+    # Task routes
     task_routes={
         "app.worker.tasks.*": {"queue": "execution"},
+        "app.worker.beat_tasks.*": {"queue": "default"},
     },
     # Default queue
     task_default_queue="default",
+    # Beat schedule — periodic tasks
+    beat_schedule={
+        "recover-dead-runs": {
+            "task": "app.worker.beat_tasks.recover_dead_runs",
+            "schedule": 300.0,  # Every 5 minutes
+        },
+        "cleanup-old-runs": {
+            "task": "app.worker.beat_tasks.cleanup_old_runs",
+            "schedule": 86400.0,  # Every 24 hours
+        },
+    },
 )
 
-# Auto-discover tasks from the worker module
-celery_app.autodiscover_tasks(["app.worker"])
+# Auto-discover tasks from both modules
+celery_app.autodiscover_tasks(["app.worker", "app.worker.beat_tasks"])
