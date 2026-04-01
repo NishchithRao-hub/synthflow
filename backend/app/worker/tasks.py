@@ -289,6 +289,15 @@ def _execute_run(run_id: str) -> dict:
             # Store result
             context.set_node_result(node_id, node_result)
 
+            # Record AI usage if this was an AI node
+            if node_type == "ai" and node_result.status == NODE_COMPLETED:
+                try:
+                    from app.services.usage_service_sync import record_ai_call_sync
+
+                    record_ai_call_sync(db, workflow.owner_id, workflow.id, run.id)
+                except Exception as e:
+                    logger.warning("ai_usage_recording_failed", error=str(e))
+
             # Update log
             log_entry.status = node_result.status
             log_entry.output = node_result.output
