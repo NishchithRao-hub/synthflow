@@ -26,7 +26,19 @@ async def create_workflow(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
+    # Check workflow creation limit
+    from app.services import usage_service
+
+    can_create, error_msg = await usage_service.check_can_create_workflow(
+        db, current_user.id
+    )
+    if not can_create:
+        from app.core.exceptions import UsageLimitExceededException
+
+        raise UsageLimitExceededException("workflows", 0)
+
     workflow = await workflow_service.create_workflow(db, current_user.id, data)
+
     return WorkflowCreateResponse(
         id=workflow.id,
         name=workflow.name,
