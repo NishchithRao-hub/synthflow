@@ -244,7 +244,15 @@ function NodeStatusCard({
 
       {status.output &&
         !status.output._truncated &&
-        Object.keys(status.output).length > 0 && (
+        Object.keys(status.output).length > 0 &&
+        (status.output._artifact ? (
+          <div
+            className="mt-1 flex items-center gap-1 text-xs"
+            style={{ color: "var(--accent-blue)" }}
+          >
+            <span>Large output stored as artifact</span>
+          </div>
+        ) : (
           <details className="mt-1">
             <summary
               className="text-xs cursor-pointer"
@@ -262,7 +270,7 @@ function NodeStatusCard({
               {JSON.stringify(status.output, null, 2).slice(0, 500)}
             </pre>
           </details>
-        )}
+        ))}
     </div>
   );
 }

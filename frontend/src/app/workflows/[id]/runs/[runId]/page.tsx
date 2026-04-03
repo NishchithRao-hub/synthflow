@@ -9,6 +9,8 @@ import { useWorkflow } from "@/hooks/use-workflow";
 import { useRunDetail, type RunDetail } from "@/hooks/use-run-detail";
 import AppLayout from "@/components/layout/app-layout";
 import Button from "@/components/ui/button";
+import ArtifactBadge from "@/components/ui/artifact-badge";
+
 import {
   ArrowLeft,
   CheckCircle2,
@@ -390,25 +392,34 @@ function NodeTimelineCard({
           </div>
         )}
 
-        {/* Output toggle */}
+        {/* Output */}
         {status.output && Object.keys(status.output).length > 0 && (
           <div className="mt-2">
-            <button
-              onClick={() => setShowOutput(!showOutput)}
-              className="flex items-center gap-1 text-xs font-medium transition-colors"
-              style={{ color: "var(--accent-blue)" }}
-            >
-              {showOutput ? (
-                <ChevronDown size={12} />
-              ) : (
-                <ChevronRight size={12} />
-              )}
-              {showOutput ? "Hide output" : "Show output"}
-            </button>
-            {showOutput && (
-              <div className="mt-2">
-                <JsonViewer data={status.output} />
-              </div>
+            {status.output._artifact ? (
+              <ArtifactBadge
+                artifactKey={status.output._artifact_key as string}
+                sizeBytes={status.output._original_size_bytes as number}
+              />
+            ) : (
+              <>
+                <button
+                  onClick={() => setShowOutput(!showOutput)}
+                  className="flex items-center gap-1 text-xs font-medium transition-colors"
+                  style={{ color: "var(--accent-blue)" }}
+                >
+                  {showOutput ? (
+                    <ChevronDown size={12} />
+                  ) : (
+                    <ChevronRight size={12} />
+                  )}
+                  {showOutput ? "Hide output" : "Show output"}
+                </button>
+                {showOutput && (
+                  <div className="mt-2">
+                    <JsonViewer data={status.output} />
+                  </div>
+                )}
+              </>
             )}
           </div>
         )}
