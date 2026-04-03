@@ -8,6 +8,7 @@ from sqlalchemy import select
 from app.core.database import async_session_factory
 from app.core.exceptions import BadRequestException, NotFoundException
 from app.core.rate_limiter import check_rate_limit
+from app.models.usage_record import UsageRecord
 from app.models.workflow import Workflow
 from app.models.workflow_run import WorkflowRun
 from app.worker.tasks import execute_workflow_run_task
@@ -103,6 +104,29 @@ async def webhook_trigger(workflow_id: str, request: Request):
                     "active_run_id": active_run.id,
                 }
 
+        # Check owner's usage limits
+        from app.services import usage_service
+
+        can_execute, error_msg = await usage_service.check_can_execute(
+            db, workflow.owner_id
+        )
+        if not can_execute:
+            logger.info(
+                "webhook_rejected_usage_limit",
+                workflow_id=workflow_id,
+                owner_id=workflow.owner_id,
+                reason=error_msg,
+            )
+            return JSONResponse(
+                status_code=429,
+                content={
+                    "error": {
+                        "message": error_msg,
+                        "status_code": 429,
+                    }
+                },
+            )
+
         # Create run record
         run = WorkflowRun(
             workflow_id=workflow.id,
@@ -113,6 +137,15 @@ async def webhook_trigger(workflow_id: str, request: Request):
             execution_context={},
         )
         db.add(run)
+
+        # Record usage
+        usage_record = UsageRecord(
+            user_id=workflow.owner_id,
+            event_type="workflow_run",
+            workflow_id=workflow.id,
+        )
+        db.add(usage_record)
+
         await db.commit()
         await db.refresh(run)
 

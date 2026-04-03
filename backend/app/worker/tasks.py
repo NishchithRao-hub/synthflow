@@ -1,6 +1,7 @@
 # backend/app/worker/tasks.py
 
 import asyncio
+import json
 from datetime import datetime, timezone
 
 import structlog
@@ -288,6 +289,52 @@ def _execute_run(run_id: str) -> dict:
 
             # Store result
             context.set_node_result(node_id, node_result)
+
+            # Check if output should be stored as artifact
+            if node_result.output and node_result.status == NODE_COMPLETED:
+                try:
+                    from app.services.storage_service import (
+                        should_store_as_artifact,
+                        upload_artifact,
+                    )
+
+                    if should_store_as_artifact(node_result.output):
+                        artifact_key = upload_artifact(
+                            run_id=run.id,
+                            node_id=node_id,
+                            data=node_result.output,
+                        )
+                        # Replace the full output with a reference
+                        original_size = len(json.dumps(node_result.output))
+                        node_result.output = {
+                            "_artifact": True,
+                            "_artifact_key": artifact_key,
+                            "_original_size_bytes": original_size,
+                        }
+                        logger.info(
+                            "output_stored_as_artifact",
+                            node_id=node_id,
+                            artifact_key=artifact_key,
+                            size_bytes=original_size,
+                            run_id=run.id,
+                        )
+                except Exception as e:
+                    logger.warning(
+                        "artifact_storage_failed",
+                        node_id=node_id,
+                        error=str(e),
+                        run_id=run.id,
+                    )
+                    # Keep the original output in the database as fallback
+
+            # Record AI usage if this was an AI node
+            if node_type == "ai" and node_result.status == NODE_COMPLETED:
+                try:
+                    from app.services.usage_service_sync import record_ai_call_sync
+
+                    record_ai_call_sync(db, workflow.owner_id, workflow.id, run.id)
+                except Exception as e:
+                    logger.warning("ai_usage_recording_failed", error=str(e))
 
             # Update log
             log_entry.status = node_result.status

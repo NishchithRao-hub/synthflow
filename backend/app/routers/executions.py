@@ -34,19 +34,34 @@ async def execute_workflow(
     """
     Trigger a manual workflow execution.
 
-    Creates a run record, enqueues it for async execution via Celery,
-    and returns 202 Accepted immediately. The client can poll
-    GET /api/runs/{run_id} to check execution progress.
+    Checks usage limits, creates a run record, records usage,
+    enqueues for async execution via Celery, and returns 202 immediately.
     """
+    from app.services import usage_service
     from app.worker.tasks import execute_workflow_run_task
 
-    # Create the run record (validates workflow, checks concurrency)
+    # Check run limit
+    can_execute, error_msg = await usage_service.check_can_execute(db, current_user.id)
+    if not can_execute:
+        from app.core.exceptions import UsageLimitExceededException
+
+        raise UsageLimitExceededException("workflow_runs", 0)
+
+    # Create the run record
     run = await execution_service.create_workflow_run(
         db=db,
         workflow_id=workflow_id,
         owner_id=current_user.id,
         trigger_type="manual",
         trigger_input=data.input,
+    )
+
+    # Record usage
+    await usage_service.record_workflow_run(
+        db=db,
+        user_id=current_user.id,
+        workflow_id=workflow_id,
+        run_id=run.id,
     )
 
     # Enqueue for async execution

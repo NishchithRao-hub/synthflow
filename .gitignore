@@ -51,3 +51,7 @@ backend/test_dag.py
 backend/test_topo_sort.py
 backend/test_async_execution.py
 backend/test_ai_enhanced.py
+backend/test_artifact_frontend.py
+
+# Local artifact storage
+artifacts/

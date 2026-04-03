@@ -21,6 +21,7 @@ interface AuthState {
 interface AuthContextType extends AuthState {
   login: (googleCredential: string) => Promise<void>;
   logout: () => Promise<void>;
+  refreshUser: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -106,8 +107,20 @@ export function AuthProvider({
     setState({ user: null, isLoading: false, isAuthenticated: false });
   }, []);
 
+  const refreshUser = useCallback(async () => {
+    try {
+      const meResponse = await api.get("/api/auth/me");
+      setState((prev) => ({
+        ...prev,
+        user: meResponse.data,
+      }));
+    } catch {
+      // Silently fail — user data will refresh on next page load
+    }
+  }, []);
+
   return (
-    <AuthContext.Provider value={{ ...state, login, logout }}>
+    <AuthContext.Provider value={{ ...state, login, logout, refreshUser }}>
       {children}
     </AuthContext.Provider>
   );

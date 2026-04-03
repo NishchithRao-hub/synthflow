@@ -303,13 +303,28 @@ async def get_run_with_logs(
     logs_result = await db.execute(logs_query)
     logs = list(logs_result.scalars().all())
 
-    # Build node statuses
+    # Build node statuses (resolve artifact references)
     node_statuses = {}
     for log in logs:
+        output = log.output
+
+        # If output is an artifact reference, add the download URL
+        if isinstance(output, dict) and output.get("_artifact"):
+            try:
+                from app.services.storage_service import get_artifact_url
+
+                artifact_key = output.get("_artifact_key", "")
+                output = {
+                    **output,
+                    "_download_url": get_artifact_url(artifact_key),
+                }
+            except Exception:
+                pass
+
         node_statuses[log.node_id] = {
             "status": log.status,
             "duration_ms": log.duration_ms,
-            "output": log.output,
+            "output": output,
             "error": log.error,
             "attempt": log.attempt,
         }
