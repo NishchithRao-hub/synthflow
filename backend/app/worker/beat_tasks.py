@@ -98,13 +98,13 @@ def cleanup_old_runs() -> dict:
     Periodic task that cleans up old completed/failed run data.
 
     Removes execution_context (large JSON) from runs older than
-    30 days to save database space. The run record and node logs
-    are preserved.
+    30 days and deletes associated S3 artifacts.
     """
     logger.info("old_run_cleanup_started")
 
     threshold = datetime.now(timezone.utc) - timedelta(days=30)
     cleaned_count = 0
+    artifacts_deleted = 0
 
     with get_worker_db() as db:
         query = select(WorkflowRun).where(
@@ -116,6 +116,19 @@ def cleanup_old_runs() -> dict:
         old_runs = list(result.scalars().all())
 
         for run in old_runs:
+            # Delete S3 artifacts for this run
+            try:
+                from app.services.storage_service import delete_run_artifacts
+
+                count = delete_run_artifacts(run.id)
+                artifacts_deleted += count
+            except Exception as e:
+                logger.warning(
+                    "artifact_cleanup_failed",
+                    run_id=run.id,
+                    error=str(e),
+                )
+
             run.execution_context = {
                 "_cleaned": True,
                 "_cleaned_at": datetime.now(timezone.utc).isoformat(),
@@ -125,6 +138,10 @@ def cleanup_old_runs() -> dict:
         if cleaned_count > 0:
             db.flush()
 
-    logger.info("old_run_cleanup_complete", cleaned=cleaned_count)
+    logger.info(
+        "old_run_cleanup_complete",
+        cleaned=cleaned_count,
+        artifacts_deleted=artifacts_deleted,
+    )
 
-    return {"cleaned": cleaned_count}
+    return {"cleaned": cleaned_count, "artifacts_deleted": artifacts_deleted}
