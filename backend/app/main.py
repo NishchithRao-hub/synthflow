@@ -16,7 +16,7 @@ from app.core.exceptions import (
     synthflow_exception_handler,
 )
 from app.core.logging import generate_request_id, setup_logging
-from app.routers import auth, billing, executions, webhooks, workflows, ws
+from app.routers import artifacts, auth, billing, executions, webhooks, workflows, ws
 from app.routers import settings as settings_router
 
 setup_logging()
@@ -88,6 +88,7 @@ app.include_router(settings_router.router)
 app.include_router(webhooks.router)
 app.include_router(ws.router)
 app.include_router(billing.router)
+app.include_router(artifacts.router)
 
 
 # --- Root and Health ---
