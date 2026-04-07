@@ -55,3 +55,9 @@ backend/test_artifact_frontend.py
 
 # Local artifact storage
 artifacts/
+
+# Production env
+.env.production
+
+# Production env
+.env.production
