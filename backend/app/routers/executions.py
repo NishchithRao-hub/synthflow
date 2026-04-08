@@ -81,7 +81,14 @@ async def get_run(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    """Get detailed execution status and results for a workflow run."""
+    """
+    Get detailed execution status and results for a workflow run.
+
+    Returns per-node statuses, durations, outputs, and errors.
+    Large outputs stored as artifacts include a download URL.
+
+    Auto-refreshes are recommended every 3 seconds for in-progress runs.
+    """
     result = await execution_service.get_run_with_logs(
         db=db,
         run_id=run_id,
@@ -102,7 +109,11 @@ async def list_workflow_runs(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    """List all runs for a specific workflow."""
+    """
+    List all runs for a specific workflow.
+
+    Supports filtering by status and pagination. Sorted by creation date (newest first).
+    """
     # Count total
     count_query = (
         select(func.count())

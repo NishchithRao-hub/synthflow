@@ -35,9 +35,58 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(
     title=settings.APP_NAME,
-    description="AI-powered workflow automation platform",
-    version="0.1.0",
+    description="""
+## SynthFlow — AI-Powered Workflow Automation Platform
+
+Design, execute, and monitor intelligent automation pipelines that combine AI, webhooks, and external APIs.
+
+### Key Features
+- **Visual Workflow Builder** — Drag-and-drop canvas for designing DAG-based workflows
+- **AI Task Nodes** — Classify, summarize, extract, and transform data using LLMs (Ollama, OpenAI)
+- **External Integrations** — Webhook triggers and HTTP action nodes for connecting services
+- **Real-Time Monitoring** — WebSocket-based live execution tracking
+- **Async Execution** — Background processing via Celery with retry and timeout policies
+- **Usage-Based Billing** — Free and Pro tiers with Stripe integration
+
+### Authentication
+All API endpoints (except webhooks and health checks) require a Bearer JWT token.
+Obtain tokens via the `POST /api/auth/google` endpoint.
+
+### WebSocket
+Connect to `ws(s)://host/ws/runs/{run_id}?token={jwt}` for real-time execution updates.
+""",
+    version="1.0.0",
     lifespan=lifespan,
+    docs_url="/docs",
+    redoc_url="/redoc",
+    openapi_tags=[
+        {
+            "name": "Authentication",
+            "description": "Google OAuth login, token refresh, and user profile",
+        },
+        {
+            "name": "Workflows",
+            "description": "Create, read, update, and delete workflow definitions",
+        },
+        {
+            "name": "Execution",
+            "description": "Trigger workflow runs and inspect execution results",
+        },
+        {
+            "name": "Webhooks",
+            "description": "Public endpoints for external services to trigger workflows",
+        },
+        {
+            "name": "Billing",
+            "description": "Usage tracking, plan management, and Stripe checkout",
+        },
+        {"name": "Settings", "description": "User preferences and API key management"},
+        {
+            "name": "Artifacts",
+            "description": "Download large execution outputs stored in S3",
+        },
+        {"name": "WebSocket", "description": "Real-time execution status streaming"},
+    ],
 )
 
 # --- Exception Handlers ---
