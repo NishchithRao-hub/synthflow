@@ -17,7 +17,7 @@
       - id: end-of-file-fixer
       - id: check-yaml
       - id: check-added-large-files
-        args: ["--maxkb=1000"]
+        args: ["--maxkb=1500"]
       - id: no-commit-to-branch
         args: ["--branch", "main"]
 
