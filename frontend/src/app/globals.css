@@ -62,3 +62,38 @@ body {
 ::-webkit-scrollbar-thumb:hover {
   background: var(--border-hover);
 }
+
+/* React Flow controls styling */
+.react-flow__controls {
+  background-color: var(--bg-secondary) !important;
+  border: 1px solid var(--border-color) !important;
+  border-radius: 10px !important;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3) !important;
+}
+
+.react-flow__controls-button {
+  background-color: var(--bg-secondary) !important;
+  border-color: var(--border-color) !important;
+  fill: var(--text-secondary) !important;
+  color: var(--text-secondary) !important;
+}
+
+.react-flow__controls-button:hover {
+  background-color: var(--bg-hover) !important;
+  fill: var(--text-primary) !important;
+  color: var(--text-primary) !important;
+}
+
+.react-flow__controls-button svg {
+  fill: var(--text-secondary) !important;
+}
+
+.react-flow__controls-button:hover svg {
+  fill: var(--text-primary) !important;
+}
+
+/* React Flow minimap */
+.react-flow__minimap {
+  border: 1px solid var(--border-color) !important;
+  border-radius: 10px !important;
+}
