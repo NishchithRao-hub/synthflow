@@ -20,7 +20,11 @@ import {
   Crown,
   CheckCircle2,
   AlertTriangle,
+  Trash2,
 } from "lucide-react";
+import Modal from "@/components/ui/modal";
+import api from "@/lib/api";
+import { useToast } from "@/components/ui/toast";
 
 function SettingsPageContent() {
   const router = useRouter();
@@ -29,6 +33,7 @@ function SettingsPageContent() {
   const { data: billing, isLoading: billingLoading } = useBillingUsage();
   const createCheckout = useCreateCheckout();
   const createPortal = useCreatePortal();
+  const { success, error: showError } = useToast();
 
   const [upgradeStatus] = useState<"success" | "cancelled" | null>(() => {
     const upgrade = searchParams.get("upgrade");
@@ -36,6 +41,10 @@ function SettingsPageContent() {
   });
   const [isUpgradeMessageDismissed, setIsUpgradeMessageDismissed] =
     useState(false);
+  const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
+  const [deleteConfirmText, setDeleteConfirmText] = useState("");
+  const [deleteError, setDeleteError] = useState<string | null>(null);
+  const [isDeletingAccount, setIsDeletingAccount] = useState(false);
   const upgradeMessage =
     isUpgradeMessageDismissed || !upgradeStatus
       ? null
@@ -65,6 +74,25 @@ function SettingsPageContent() {
   }, [upgradeStatus, router, refreshUser]);
 
   if (isLoading || !isAuthenticated || !user) return null;
+
+  const canDeleteAccount = deleteConfirmText.trim().toUpperCase() === "DELETE";
+
+  const handleDeleteAccount = async () => {
+    if (!canDeleteAccount || isDeletingAccount) return;
+    setIsDeletingAccount(true);
+    setDeleteError(null);
+    try {
+      await api.delete("/api/auth/me");
+      success("Your account has been deleted.", "Account deleted");
+      await logout();
+      router.replace("/");
+    } catch {
+      setDeleteError("Failed to delete account. Please try again.");
+      showError("Failed to delete account. Please try again.", "Delete failed");
+    } finally {
+      setIsDeletingAccount(false);
+    }
+  };
 
   return (
     <AppLayout userName={user.name} userEmail={user.email} onLogout={logout}>
@@ -230,6 +258,96 @@ function SettingsPageContent() {
           </p>
           <APIKeyRow />
         </SettingsSection>
+
+        {/* Danger Zone */}
+        <SettingsSection title="Danger Zone" icon={AlertTriangle}>
+          <div
+            className="rounded-lg border p-4"
+            style={{
+              borderColor: "rgba(239,68,68,0.35)",
+              backgroundColor: "rgba(239,68,68,0.06)",
+            }}
+          >
+            <p
+              className="text-sm font-semibold mb-1"
+              style={{ color: "var(--accent-red)" }}
+            >
+              Delete Account
+            </p>
+            <p
+              className="text-xs mb-4"
+              style={{ color: "var(--text-secondary)" }}
+            >
+              Permanently deletes your account, workflows, runs, logs, API keys,
+              and authentication data. This action cannot be undone.
+            </p>
+            <Button
+              variant="danger"
+              onClick={() => {
+                setDeleteError(null);
+                setDeleteConfirmText("");
+                setIsDeleteModalOpen(true);
+              }}
+            >
+              <Trash2 size={14} />
+              Delete Account
+            </Button>
+          </div>
+        </SettingsSection>
+
+        <Modal
+          isOpen={isDeleteModalOpen}
+          onClose={() => {
+            if (isDeletingAccount) return;
+            setIsDeleteModalOpen(false);
+          }}
+          title="Delete Account"
+        >
+          <div className="space-y-4">
+            <p className="text-sm" style={{ color: "var(--text-secondary)" }}>
+              This will permanently remove your account and all associated data.
+              Type{" "}
+              <strong style={{ color: "var(--accent-red)" }}>DELETE</strong> to
+              confirm.
+            </p>
+
+            <input
+              value={deleteConfirmText}
+              onChange={(e) => setDeleteConfirmText(e.target.value)}
+              placeholder="Type DELETE"
+              className="w-full px-3 py-2 rounded-lg text-sm outline-none"
+              style={{
+                backgroundColor: "var(--bg-primary)",
+                color: "var(--text-primary)",
+                border: "1px solid var(--border-color)",
+              }}
+            />
+
+            {deleteError && (
+              <p className="text-xs" style={{ color: "var(--accent-red)" }}>
+                {deleteError}
+              </p>
+            )}
+
+            <div className="flex items-center justify-end gap-2 pt-2">
+              <Button
+                variant="ghost"
+                onClick={() => setIsDeleteModalOpen(false)}
+                disabled={isDeletingAccount}
+              >
+                Cancel
+              </Button>
+              <Button
+                variant="danger"
+                onClick={handleDeleteAccount}
+                disabled={!canDeleteAccount || isDeletingAccount}
+                loading={isDeletingAccount}
+              >
+                Permanently Delete
+              </Button>
+            </div>
+          </div>
+        </Modal>
       </div>
     </AppLayout>
   );

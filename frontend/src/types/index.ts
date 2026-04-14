@@ -7,6 +7,7 @@ export interface User {
   name: string;
   avatar_url: string | null;
   plan: string;
+  is_email_verified: boolean;
   created_at: string;
 }
 
