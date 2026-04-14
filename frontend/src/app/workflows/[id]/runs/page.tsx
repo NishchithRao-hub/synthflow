@@ -9,6 +9,7 @@ import { useWorkflow } from "@/hooks/use-workflow";
 import { useWorkflowRuns, type RunListItem } from "@/hooks/use-runs";
 import AppLayout from "@/components/layout/app-layout";
 import Button from "@/components/ui/button";
+import Skeleton from "@/components/ui/skeleton";
 import {
   ArrowLeft,
   CheckCircle2,
@@ -156,15 +157,28 @@ export default function RunHistoryPage() {
 
         {/* Runs table */}
         {runsLoading ? (
-          <div className="flex justify-center py-20">
-            <Loader2
-              className="animate-spin"
-              size={24}
-              style={{ color: "var(--accent-blue)" }}
-            />
+          <div
+            className="rounded-xl border p-4"
+            style={{
+              backgroundColor: "var(--bg-card)",
+              borderColor: "var(--border-color)",
+            }}
+          >
+            <Skeleton className="h-5 w-44 mb-4" />
+            {Array.from({ length: 7 }).map((_, idx) => (
+              <div key={idx} className="grid grid-cols-12 gap-4 mb-3">
+                <Skeleton className="h-4 col-span-3" />
+                <Skeleton className="h-4 col-span-2" />
+                <Skeleton className="h-4 col-span-3" />
+                <Skeleton className="h-4 col-span-2" />
+                <Skeleton className="h-4 col-span-2" />
+              </div>
+            ))}
           </div>
         ) : runsData?.runs.length === 0 ? (
-          <EmptyRunState />
+          <EmptyRunState
+            onOpenEditor={() => router.push(`/workflows/${workflowId}`)}
+          />
         ) : (
           <>
             <div
@@ -305,7 +319,7 @@ function RunRow({ run, onClick }: { run: RunListItem; onClick: () => void }) {
   );
 }
 
-function EmptyRunState() {
+function EmptyRunState({ onOpenEditor }: { onOpenEditor: () => void }) {
   return (
     <div className="flex flex-col items-center justify-center py-20">
       <Clock size={28} style={{ color: "var(--text-muted)" }} />
@@ -315,9 +329,12 @@ function EmptyRunState() {
       >
         No runs yet
       </h3>
-      <p className="text-sm" style={{ color: "var(--text-muted)" }}>
-        Execute your workflow to see run history here
+      <p className="text-sm mb-5" style={{ color: "var(--text-muted)" }}>
+        Run this workflow once to start collecting execution history and logs.
       </p>
+      <Button size="sm" onClick={onOpenEditor}>
+        Open Workflow Editor
+      </Button>
     </div>
   );
 }

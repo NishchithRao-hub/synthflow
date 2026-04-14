@@ -3,8 +3,9 @@
 "use client";
 
 import Link from "next/link";
+import Image from "next/image";
 import { usePathname } from "next/navigation";
-import { LayoutDashboard, Workflow, Settings, LogOut, Zap } from "lucide-react";
+import { LayoutDashboard, Workflow, Settings, LogOut } from "lucide-react";
 import clsx from "clsx";
 
 const navItems = [
@@ -40,12 +41,13 @@ export default function Sidebar({
         className="flex items-center gap-2 px-5 py-5 border-b"
         style={{ borderColor: "var(--border-color)" }}
       >
-        <div
-          className="flex items-center justify-center w-8 h-8 rounded-lg"
-          style={{ backgroundColor: "var(--accent-purple)" }}
-        >
-          <Zap size={18} color="white" />
-        </div>
+        <Image
+          src="/logo.png"
+          alt="SynthFlow"
+          width={32}
+          height={32}
+          className="rounded-lg"
+        />
         <span
           className="text-lg font-semibold"
           style={{ color: "var(--text-primary)" }}

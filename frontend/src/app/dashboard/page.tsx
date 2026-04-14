@@ -15,6 +15,8 @@ import Button from "@/components/ui/button";
 import Modal from "@/components/ui/modal";
 import Input from "@/components/ui/input";
 import Textarea from "@/components/ui/textarea";
+import Skeleton from "@/components/ui/skeleton";
+import { useToast } from "@/components/ui/toast";
 import {
   Plus,
   Workflow,
@@ -32,6 +34,7 @@ export default function DashboardPage() {
   const { data, isLoading: workflowsLoading } = useWorkflows();
   const createWorkflow = useCreateWorkflow();
   const deleteWorkflow = useDeleteWorkflow();
+  const { success, error: showError } = useToast();
 
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [newName, setNewName] = useState("");
@@ -84,9 +87,10 @@ export default function DashboardPage() {
       setShowCreateModal(false);
       setNewName("");
       setNewDescription("");
+      success("Workflow created successfully.", "Created");
       router.push(`/workflows/${result.id}`);
-    } catch {
-      // Error handled by TanStack Query
+    } catch (err) {
+      showError(extractErrorMessage(err), "Create failed");
     }
   };
 
@@ -94,17 +98,10 @@ export default function DashboardPage() {
     try {
       await deleteWorkflow.mutateAsync(id);
       setDeleteConfirmId(null);
-    } catch {
-      // Error handled by TanStack Query
+      success("Workflow deleted.", "Deleted");
+    } catch (err) {
+      showError(extractErrorMessage(err), "Delete failed");
     }
-  };
-
-  const formatDate = (dateStr: string) => {
-    return new Date(dateStr).toLocaleDateString("en-US", {
-      month: "short",
-      day: "numeric",
-      year: "numeric",
-    });
   };
 
   return (
@@ -134,27 +131,26 @@ export default function DashboardPage() {
 
         {/* Workflow Grid */}
         {workflowsLoading ? (
-          <div className="flex justify-center py-20">
-            <svg
-              className="animate-spin h-8 w-8"
-              style={{ color: "var(--accent-blue)" }}
-              viewBox="0 0 24 24"
-            >
-              <circle
-                className="opacity-25"
-                cx="12"
-                cy="12"
-                r="10"
-                stroke="currentColor"
-                strokeWidth="4"
-                fill="none"
-              />
-              <path
-                className="opacity-75"
-                fill="currentColor"
-                d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"
-              />
-            </svg>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            {Array.from({ length: 6 }).map((_, idx) => (
+              <div
+                key={idx}
+                className="rounded-xl border p-5"
+                style={{
+                  backgroundColor: "var(--bg-card)",
+                  borderColor: "var(--border-color)",
+                }}
+              >
+                <Skeleton className="h-5 w-1/2 mb-4" />
+                <Skeleton className="h-3 w-full mb-2" />
+                <Skeleton className="h-3 w-4/5 mb-5" />
+                <div className="flex gap-2">
+                  <Skeleton className="h-3 w-16" />
+                  <Skeleton className="h-3 w-12" />
+                  <Skeleton className="h-3 w-14" />
+                </div>
+              </div>
+            ))}
           </div>
         ) : data?.workflows.length === 0 ? (
           <EmptyState onCreateClick={() => setShowCreateModal(true)} />
@@ -291,7 +287,7 @@ function WorkflowCard({
           </div>
           <div>
             <h3
-              className="text-sm font-semibold truncate max-w-[180px]"
+              className="text-sm font-semibold truncate max-w-45"
               style={{ color: "var(--text-primary)" }}
             >
               {workflow.name}
@@ -425,4 +421,30 @@ function EmptyState({ onCreateClick }: { onCreateClick: () => void }) {
       </Button>
     </div>
   );
+}
+
+function extractErrorMessage(err: unknown): string {
+  if (err && typeof err === "object") {
+    const e = err as {
+      response?: {
+        data?: {
+          error?: { message?: string };
+          message?: string;
+          detail?: unknown;
+        };
+      };
+      message?: string;
+    };
+    if (e.response?.data?.error?.message) return e.response.data.error.message;
+    if (typeof e.response?.data?.message === "string") {
+      return e.response.data.message;
+    }
+    const detail = e.response?.data?.detail;
+    if (Array.isArray(detail) && detail.length > 0) {
+      return detail[0]?.msg ?? "Validation error";
+    }
+    if (typeof detail === "string") return detail;
+    if (typeof e.message === "string" && e.message) return e.message;
+  }
+  return "Something went wrong. Please try again.";
 }

@@ -38,7 +38,8 @@ Thumbs.db
 coverage/
 .pytest_cache/
 htmlcov/
-project-roadmap-v2.md
+repomix-output.xml
+# project-roadmap-v2.md
 
 # === Frontend ===
 .env.local

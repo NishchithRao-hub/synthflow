@@ -75,9 +75,9 @@ api.interceptors.response.use(
 function handleForceLogout() {
   accessToken = null;
   localStorage.removeItem("synthflow_refresh_token");
-  // Redirect to login if not already there
-  if (typeof window !== "undefined" && window.location.pathname !== "/login") {
-    window.location.href = "/login";
+  // Redirect to the home page if not already there
+  if (typeof window !== "undefined" && window.location.pathname !== "/") {
+    window.location.href = "/";
   }
 }
 

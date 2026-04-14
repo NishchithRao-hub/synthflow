@@ -12,6 +12,9 @@ import WorkflowCanvas from "@/components/workflow/workflow-canvas";
 import WebhookUrlBar from "@/components/workflow/webhook-url-bar";
 import RunMonitor from "@/components/workflow/run-monitor";
 import Button from "@/components/ui/button";
+import Modal from "@/components/ui/modal";
+import Skeleton from "@/components/ui/skeleton";
+import { useToast } from "@/components/ui/toast";
 import {
   ArrowLeft,
   Save,
@@ -32,6 +35,7 @@ export default function WorkflowEditorPage() {
     isAuthenticated,
   );
   const saveWorkflow = useSaveWorkflow(workflowId);
+  const { success, error: showError, info } = useToast();
 
   const graphRef = useRef<{ nodes: Node[]; edges: Edge[] }>({
     nodes: [],
@@ -46,6 +50,8 @@ export default function WorkflowEditorPage() {
   const [activeRunId, setActiveRunId] = useState<string | null>(null);
   const [isExecuting, setIsExecuting] = useState(false);
   const [showRunMonitor, setShowRunMonitor] = useState(false);
+  const [showLeaveModal, setShowLeaveModal] = useState(false);
+  const [pendingRoute, setPendingRoute] = useState<string | null>(null);
 
   useEffect(() => {
     if (!authLoading && !isAuthenticated) {
@@ -108,10 +114,12 @@ export default function WorkflowEditorPage() {
       await saveWorkflow.mutateAsync({ graph_data: graphData });
       setHasUnsavedChanges(false);
       setSaveStatus("saved");
-    } catch {
+      success("Workflow changes saved.", "Saved");
+    } catch (err) {
       setSaveStatus("error");
+      showError(extractErrorMessage(err), "Save failed");
     }
-  }, [saveWorkflow]);
+  }, [saveWorkflow, showError, success]);
 
   const handleExecute = async () => {
     // Save first if there are unsaved changes
@@ -132,13 +140,25 @@ export default function WorkflowEditorPage() {
       const runId = response.data.run_id;
       setActiveRunId(runId);
       setShowRunMonitor(true);
+      info("Execution started. Live updates are now available.", "Run started");
     } catch (e: unknown) {
-      const errorMessage = e instanceof Error ? e.message : "Execution failed";
-      alert(`Failed to execute workflow: ${errorMessage}`);
+      showError(extractErrorMessage(e), "Execution failed");
     } finally {
       setIsExecuting(false);
     }
   };
+
+  const requestNavigation = useCallback(
+    (route: string) => {
+      if (hasUnsavedChanges) {
+        setPendingRoute(route);
+        setShowLeaveModal(true);
+        return;
+      }
+      router.push(route);
+    },
+    [hasUnsavedChanges, router],
+  );
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -178,7 +198,7 @@ export default function WorkflowEditorPage() {
     if (initialNodes.length > 0) {
       graphRef.current = { nodes: initialNodes, edges: initialEdges };
     }
-  }, [workflow]);
+  }, [initialEdges, initialNodes]);
 
   if (authLoading || isLoading) {
     return (
@@ -186,26 +206,11 @@ export default function WorkflowEditorPage() {
         className="min-h-screen flex items-center justify-center"
         style={{ backgroundColor: "var(--bg-primary)" }}
       >
-        <svg
-          className="animate-spin h-8 w-8"
-          style={{ color: "var(--accent-blue)" }}
-          viewBox="0 0 24 24"
-        >
-          <circle
-            className="opacity-25"
-            cx="12"
-            cy="12"
-            r="10"
-            stroke="currentColor"
-            strokeWidth="4"
-            fill="none"
-          />
-          <path
-            className="opacity-75"
-            fill="currentColor"
-            d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"
-          />
-        </svg>
+        <div className="w-full max-w-6xl px-6">
+          <Skeleton className="h-12 w-full mb-4" />
+          <Skeleton className="h-10 w-full mb-4" />
+          <Skeleton className="h-[65vh] w-full rounded-2xl" />
+        </div>
       </div>
     );
   }
@@ -217,7 +222,7 @@ export default function WorkflowEditorPage() {
     >
       {/* Top bar */}
       <div
-        className="flex items-center justify-between px-4 py-3 border-b flex-shrink-0"
+        className="flex items-center justify-between px-4 py-3 border-b shrink-0"
         style={{
           backgroundColor: "var(--bg-secondary)",
           borderColor: "var(--border-color)",
@@ -225,15 +230,7 @@ export default function WorkflowEditorPage() {
       >
         <div className="flex items-center gap-3">
           <button
-            onClick={() => {
-              if (hasUnsavedChanges) {
-                if (window.confirm("You have unsaved changes. Leave anyway?")) {
-                  router.push("/dashboard");
-                }
-              } else {
-                router.push("/dashboard");
-              }
-            }}
+            onClick={() => requestNavigation("/dashboard")}
             className="p-2 rounded-lg transition-colors"
             style={{ color: "var(--text-secondary)" }}
             onMouseEnter={(e) =>
@@ -339,6 +336,70 @@ export default function WorkflowEditorPage() {
           />
         )}
       </div>
+
+      <Modal
+        isOpen={showLeaveModal}
+        onClose={() => {
+          setShowLeaveModal(false);
+          setPendingRoute(null);
+        }}
+        title="Unsaved changes"
+      >
+        <div className="space-y-4">
+          <p className="text-sm" style={{ color: "var(--text-secondary)" }}>
+            You have unsaved edits in this workflow. Leaving now will discard
+            those changes.
+          </p>
+          <div className="flex items-center justify-end gap-2">
+            <Button
+              variant="secondary"
+              onClick={() => {
+                setShowLeaveModal(false);
+                setPendingRoute(null);
+              }}
+            >
+              Stay
+            </Button>
+            <Button
+              variant="danger"
+              onClick={() => {
+                const route = pendingRoute || "/dashboard";
+                setShowLeaveModal(false);
+                setPendingRoute(null);
+                router.push(route);
+              }}
+            >
+              Leave without saving
+            </Button>
+          </div>
+        </div>
+      </Modal>
     </div>
   );
+}
+
+function extractErrorMessage(err: unknown): string {
+  if (err && typeof err === "object") {
+    const e = err as {
+      response?: {
+        data?: {
+          error?: { message?: string };
+          message?: string;
+          detail?: unknown;
+        };
+      };
+      message?: string;
+    };
+    if (e.response?.data?.error?.message) return e.response.data.error.message;
+    if (typeof e.response?.data?.message === "string") {
+      return e.response.data.message;
+    }
+    const detail = e.response?.data?.detail;
+    if (Array.isArray(detail) && detail.length > 0) {
+      return detail[0]?.msg ?? "Validation error";
+    }
+    if (typeof detail === "string") return detail;
+    if (typeof e.message === "string" && e.message) return e.message;
+  }
+  return "Something went wrong. Please try again.";
 }
