@@ -67,7 +67,7 @@ export function useRunPolling(
 
         // Schedule next poll
         timeoutId = setTimeout(poll, intervalMs);
-      } catch (e) {
+      } catch {
         if (!active) return;
         setError("Failed to fetch run status");
         // Continue polling even on error

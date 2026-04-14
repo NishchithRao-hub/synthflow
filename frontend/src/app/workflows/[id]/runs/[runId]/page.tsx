@@ -6,10 +6,10 @@ import { useParams, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { useAuth } from "@/contexts/auth-context";
 import { useWorkflow } from "@/hooks/use-workflow";
-import { useRunDetail, type RunDetail } from "@/hooks/use-run-detail";
+import { useRunDetail } from "@/hooks/use-run-detail";
 import AppLayout from "@/components/layout/app-layout";
-import Button from "@/components/ui/button";
 import ArtifactBadge from "@/components/ui/artifact-badge";
+import Skeleton from "@/components/ui/skeleton";
 
 import {
   ArrowLeft,
@@ -93,12 +93,19 @@ export default function RunDetailPage() {
   if (runLoading || !run) {
     return (
       <AppLayout userName={user.name} userEmail={user.email} onLogout={logout}>
-        <div className="flex justify-center py-20">
-          <Loader2
-            className="animate-spin"
-            size={24}
-            style={{ color: "var(--accent-blue)" }}
-          />
+        <div className="p-8 max-w-4xl">
+          <Skeleton className="h-8 w-56 mb-6" />
+          <div className="grid grid-cols-4 gap-4 mb-8">
+            <Skeleton className="h-20" />
+            <Skeleton className="h-20" />
+            <Skeleton className="h-20" />
+            <Skeleton className="h-20" />
+          </div>
+          <Skeleton className="h-5 w-44 mb-3" />
+          <Skeleton className="h-28 mb-4" />
+          <Skeleton className="h-24 mb-3" />
+          <Skeleton className="h-24 mb-3" />
+          <Skeleton className="h-24" />
         </div>
       </AppLayout>
     );
@@ -285,7 +292,7 @@ function SummaryCard({
         {fullValue && (
           <button
             onClick={handleCopy}
-            className="flex-shrink-0 p-1 rounded transition-colors"
+            className="shrink-0 p-1 rounded transition-colors"
             style={{
               color: copied ? "var(--accent-green)" : "var(--text-muted)",
             }}
@@ -322,7 +329,7 @@ function NodeTimelineCard({
       {/* Timeline line */}
       <div className="flex flex-col items-center">
         <div
-          className="w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0"
+          className="w-8 h-8 rounded-full flex items-center justify-center shrink-0"
           style={{ backgroundColor: config.bgColor }}
         >
           <Icon
