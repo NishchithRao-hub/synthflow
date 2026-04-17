@@ -23,7 +23,7 @@ import {
   Trash2,
 } from "lucide-react";
 import Modal from "@/components/ui/modal";
-import api from "@/lib/api";
+import api, { setAccessToken } from "@/lib/api";
 import { useToast } from "@/components/ui/toast";
 
 function SettingsPageContent() {
@@ -84,8 +84,20 @@ function SettingsPageContent() {
     try {
       await api.delete("/api/auth/me");
       success("Your account has been deleted.", "Account deleted");
-      await logout();
-      router.replace("/");
+      try {
+        const refreshToken = localStorage.getItem("synthflow_refresh_token");
+        if (refreshToken) {
+          await api.post("/api/auth/logout", {
+            refresh_token: refreshToken,
+          });
+        }
+      } catch {
+        // Account is deleted; local cleanup still needs to happen.
+      }
+
+      setAccessToken(null);
+      localStorage.removeItem("synthflow_refresh_token");
+      window.location.replace(window.location.origin + "/");
     } catch {
       setDeleteError("Failed to delete account. Please try again.");
       showError("Failed to delete account. Please try again.", "Delete failed");
