@@ -77,7 +77,7 @@ function handleForceLogout() {
   localStorage.removeItem("synthflow_refresh_token");
   // Redirect to the home page if not already there
   if (typeof window !== "undefined" && window.location.pathname !== "/") {
-    window.location.href = "/";
+    window.location.replace(window.location.origin + "/");
   }
 }
 
