@@ -64,6 +64,10 @@ echo ">>> Step 3: Building and starting services on EC2..."
 ssh -i "$KEY_PATH" "$EC2_USER@$EC2_IP" << 'REMOTE_SCRIPT'
     cd ~/synthflow
 
+    set -a
+    . ./.env.production
+    set +a
+
     echo "--- Stopping existing containers ---"
     cd infra
     docker compose -f docker-compose.prod.yml down 2>/dev/null || true
