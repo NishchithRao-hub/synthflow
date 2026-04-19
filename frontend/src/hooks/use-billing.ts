@@ -12,6 +12,7 @@ export interface BillingUsage {
   plan: string;
   billing_cycle_start: string;
   billing_cycle_end: string;
+  billing_cycle_source: "stripe" | "fallback";
   usage: {
     workflows: UsageItem;
     workflow_runs: UsageItem;

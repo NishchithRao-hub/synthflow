@@ -14,7 +14,12 @@ from app.models.workflow import Workflow
 logger = structlog.get_logger()
 
 
-async def get_usage_summary(db: AsyncSession, user_id: str) -> dict:
+async def get_usage_summary(
+    db: AsyncSession,
+    user_id: str,
+    billing_cycle: tuple[datetime, datetime] | None = None,
+    billing_cycle_source: str = "fallback",
+) -> dict:
     """
     Get the current billing cycle usage for a user.
 
@@ -30,9 +35,7 @@ async def get_usage_summary(db: AsyncSession, user_id: str) -> dict:
 
     plan = get_plan_limits(user.plan)
 
-    # Get billing cycle boundaries (first of current month)
-    now = datetime.now(timezone.utc)
-    cycle_start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+    cycle_start, cycle_end = billing_cycle or _get_default_cycle_boundaries()
 
     # Count workflows
     workflow_count = (
@@ -43,7 +46,7 @@ async def get_usage_summary(db: AsyncSession, user_id: str) -> dict:
         )
     ).scalar_one()
 
-    # Count workflow runs this month
+    # Count workflow runs in current billing cycle
     run_count = (
         await db.execute(
             select(func.count())
@@ -52,11 +55,12 @@ async def get_usage_summary(db: AsyncSession, user_id: str) -> dict:
                 UsageRecord.user_id == user_id,
                 UsageRecord.event_type == "workflow_run",
                 UsageRecord.recorded_at >= cycle_start,
+                UsageRecord.recorded_at < cycle_end,
             )
         )
     ).scalar_one()
 
-    # Count AI calls this month
+    # Count AI calls in current billing cycle
     ai_count = (
         await db.execute(
             select(func.count())
@@ -65,6 +69,7 @@ async def get_usage_summary(db: AsyncSession, user_id: str) -> dict:
                 UsageRecord.user_id == user_id,
                 UsageRecord.event_type == "ai_call",
                 UsageRecord.recorded_at >= cycle_start,
+                UsageRecord.recorded_at < cycle_end,
             )
         )
     ).scalar_one()
@@ -72,7 +77,8 @@ async def get_usage_summary(db: AsyncSession, user_id: str) -> dict:
     return {
         "plan": user.plan,
         "billing_cycle_start": cycle_start.isoformat(),
-        "billing_cycle_end": _get_cycle_end(now).isoformat(),
+        "billing_cycle_end": cycle_end.isoformat(),
+        "billing_cycle_source": billing_cycle_source,
         "usage": {
             "workflows": {"used": workflow_count, "limit": plan.workflows},
             "workflow_runs": {"used": run_count, "limit": plan.runs_per_month},
@@ -158,12 +164,32 @@ async def record_ai_call(
     await db.flush()
 
 
-def _get_cycle_end(now: datetime) -> datetime:
-    """Get the last moment of the current billing cycle (end of month)."""
+def _get_default_cycle_boundaries() -> tuple[datetime, datetime]:
+    """Get default monthly cycle boundaries in UTC.
+
+    Falls back to calendar month boundaries when Stripe cycle data is unavailable.
+    """
+    now = datetime.now(timezone.utc)
+    cycle_start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+
     if now.month == 12:
-        return now.replace(
-            year=now.year + 1, month=1, day=1, hour=0, minute=0, second=0, microsecond=0
+        cycle_end = now.replace(
+            year=now.year + 1,
+            month=1,
+            day=1,
+            hour=0,
+            minute=0,
+            second=0,
+            microsecond=0,
         )
-    return now.replace(
-        month=now.month + 1, day=1, hour=0, minute=0, second=0, microsecond=0
-    )
+    else:
+        cycle_end = now.replace(
+            month=now.month + 1,
+            day=1,
+            hour=0,
+            minute=0,
+            second=0,
+            microsecond=0,
+        )
+
+    return cycle_start, cycle_end

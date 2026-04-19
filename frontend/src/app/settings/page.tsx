@@ -30,15 +30,18 @@ function SettingsPageContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const { user, isLoading, isAuthenticated, logout, refreshUser } = useAuth();
-  const { data: billing, isLoading: billingLoading } = useBillingUsage();
+  const {
+    data: billing,
+    isLoading: billingLoading,
+    refetch: refetchBilling,
+  } = useBillingUsage();
   const createCheckout = useCreateCheckout();
   const createPortal = useCreatePortal();
   const { success, error: showError } = useToast();
 
-  const [upgradeStatus] = useState<"success" | "cancelled" | null>(() => {
-    const upgrade = searchParams.get("upgrade");
-    return upgrade === "success" || upgrade === "cancelled" ? upgrade : null;
-  });
+  const upgrade = searchParams.get("upgrade");
+  const upgradeStatus: "success" | "cancelled" | null =
+    upgrade === "success" || upgrade === "cancelled" ? upgrade : null;
   const [isUpgradeMessageDismissed, setIsUpgradeMessageDismissed] =
     useState(false);
   const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
@@ -58,6 +61,10 @@ function SettingsPageContent() {
     }
   }, [isLoading, isAuthenticated, router]);
 
+  useEffect(() => {
+    setIsUpgradeMessageDismissed(false);
+  }, [upgradeStatus]);
+
   // Refresh user data on settings page load (picks up plan changes)
   useEffect(() => {
     if (isAuthenticated) {
@@ -67,11 +74,47 @@ function SettingsPageContent() {
 
   // Check for upgrade success/cancel from Stripe redirect
   useEffect(() => {
-    if (upgradeStatus) {
-      // router.replace("/settings");
-      refreshUser(); // Refresh user data to get new plan info
-    }
-  }, [upgradeStatus, router, refreshUser]);
+    if (!isAuthenticated || upgradeStatus !== "success") return;
+
+    let isCancelled = false;
+    let intervalId: ReturnType<typeof setInterval> | null = null;
+    let attempts = 0;
+    const maxAttempts = 15;
+
+    const syncAndRefresh = async () => {
+      if (isCancelled) return;
+
+      attempts += 1;
+
+      try {
+        const response = await api.post("/api/billing/sync-subscription");
+        await refreshUser();
+        await refetchBilling();
+
+        const syncedPlan = response.data?.plan;
+        const isNowPro = syncedPlan === "pro" || user?.plan === "pro";
+
+        if (isNowPro || attempts >= maxAttempts) {
+          if (intervalId) clearInterval(intervalId);
+        }
+      } catch {
+        if (attempts >= maxAttempts && intervalId) {
+          clearInterval(intervalId);
+        }
+      }
+    };
+
+    // Trigger immediately, then keep polling briefly for eventual consistency.
+    void syncAndRefresh();
+    intervalId = setInterval(() => {
+      void syncAndRefresh();
+    }, 2000);
+
+    return () => {
+      isCancelled = true;
+      if (intervalId) clearInterval(intervalId);
+    };
+  }, [isAuthenticated, upgradeStatus, refreshUser, refetchBilling, user?.plan]);
 
   if (isLoading || !isAuthenticated || !user) return null;
 
@@ -183,26 +226,31 @@ function SettingsPageContent() {
                 />
                 <UsageMeter
                   label="Workflow Runs"
-                  subtitle="this month"
+                  subtitle="current cycle"
                   used={billing.usage.workflow_runs.used}
                   limit={billing.usage.workflow_runs.limit}
                 />
                 <UsageMeter
                   label="AI Node Calls"
-                  subtitle="this month"
+                  subtitle="current cycle"
                   used={billing.usage.ai_node_calls.used}
                   limit={billing.usage.ai_node_calls.limit}
                 />
               </div>
 
-              {/* Billing cycle */}
+              {/* Current period */}
               <p
                 className="text-xs mb-4"
                 style={{ color: "var(--text-muted)" }}
               >
-                Billing cycle: {formatDate(billing.billing_cycle_start)} —{" "}
+                Current period: {formatDate(billing.billing_cycle_start)} -{" "}
                 {formatDate(billing.billing_cycle_end)}
               </p>
+              {billing.billing_cycle_source === "fallback" && (
+                <p className="text-xs mb-4" style={{ color: "#f59e0b" }}>
+                  Using estimated monthly cycle while syncing with Stripe.
+                </p>
+              )}
 
               {/* Upgrade / Manage buttons */}
               {user.plan === "free" ? (
@@ -620,6 +668,7 @@ function formatDate(isoString: string): string {
     month: "short",
     day: "numeric",
     year: "numeric",
+    timeZone: "UTC",
   });
 }
 
