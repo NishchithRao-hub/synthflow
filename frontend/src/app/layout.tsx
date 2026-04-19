@@ -5,8 +5,13 @@ import "./globals.css";
 import Providers from "@/components/providers";
 
 export const metadata: Metadata = {
-  title: "SynthFlow — AI Workflow Automation",
+  title: "SynthFlow",
   description: "Design, execute, and monitor AI-powered automation workflows",
+  icons: {
+    icon: "/logo.png",
+    shortcut: "/logo.png",
+    apple: "/logo.png",
+  },
 };
 
 export default function RootLayout({
