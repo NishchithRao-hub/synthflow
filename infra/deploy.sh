@@ -64,6 +64,7 @@ echo ">>> Step 3: Building and starting services on EC2..."
 ssh -i "$KEY_PATH" "$EC2_USER@$EC2_IP" << 'REMOTE_SCRIPT'
     cd ~/synthflow
 
+    sed -i 's/\r$//' ./.env.production
     set -a
     . ./.env.production
     set +a
