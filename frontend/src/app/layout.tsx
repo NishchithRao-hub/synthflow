@@ -5,7 +5,7 @@ import "./globals.css";
 import Providers from "@/components/providers";
 
 export const metadata: Metadata = {
-  title: "synthflow",
+  title: "SynthFlow",
   description: "Design, execute, and monitor AI-powered automation workflows",
   icons: {
     icon: "/logo.png",
