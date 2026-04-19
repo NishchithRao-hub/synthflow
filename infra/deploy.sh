@@ -73,6 +73,10 @@ ssh -i "$KEY_PATH" "$EC2_USER@$EC2_IP" << 'REMOTE_SCRIPT'
     cd infra
     docker compose -f docker-compose.prod.yml down 2>/dev/null || true
 
+    echo "--- Cleaning Docker cache ---"
+    docker builder prune -af >/dev/null 2>&1 || true
+    docker image prune -af >/dev/null 2>&1 || true
+
     echo "--- Building containers ---"
     docker compose -f docker-compose.prod.yml build --no-cache
 
