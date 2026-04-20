@@ -13,6 +13,7 @@ REMOTE_DIR="${REMOTE_DIR:-/home/$EC2_USER/synthflow}"
 
 resolve_windows_profile_ssh_path() {
     local candidate=""
+    local match
 
     if [ -n "${USERPROFILE:-}" ] && command -v wslpath >/dev/null 2>&1; then
         candidate="$(wslpath "$USERPROFILE" 2>/dev/null || true)/.ssh/$KEY_FILE_NAME"
@@ -28,6 +29,15 @@ resolve_windows_profile_ssh_path() {
             echo "$candidate"
             return
         fi
+    fi
+
+    if [ -d "/mnt/c/Users" ]; then
+        for match in /mnt/c/Users/*/.ssh/"$KEY_FILE_NAME"; do
+            if [ -f "$match" ]; then
+                echo "$match"
+                return
+            fi
+        done
     fi
 
     echo ""
@@ -56,7 +66,7 @@ if [ -n "$KEY_PATH" ] && [ ! -f "$KEY_PATH" ] && command -v wslpath >/dev/null 2
 fi
 
 if [ ! -f "$KEY_PATH" ]; then
-    echo "SSH key not found at $KEY_PATH"
+    echo "SSH key not found at ${KEY_PATH:-<empty>}"
     echo "Looked for:"
     echo "  - SSH_KEY_PATH (if set)"
     echo "  - $HOME/.ssh/$KEY_FILE_NAME"
