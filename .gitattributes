@@ -1,0 +1,16 @@
+# Normalize text files by default
+* text=auto
+
+# Enforce LF for shell and infra scripts/config used in Linux containers/hosts
+*.sh text eol=lf
+*.bash text eol=lf
+Dockerfile text eol=lf
+*.yml text eol=lf
+*.yaml text eol=lf
+*.conf text eol=lf
+*.env text eol=lf
+
+# Keep platform-specific scripts with CRLF where appropriate
+*.ps1 text eol=crlf
+*.bat text eol=crlf
+*.cmd text eol=crlf
