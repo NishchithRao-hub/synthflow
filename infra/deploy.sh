@@ -7,17 +7,48 @@ set -e
 
 EC2_IP=$1
 EC2_USER="${EC2_USER:-ec2-user}"
-KEY_PATH="${SSH_KEY_PATH:-$HOME/.ssh/synthflow-key.pem}"
+KEY_FILE_NAME="${SYNTHFLOW_SSH_KEY_NAME:-synthflow-key.pem}"
+KEY_PATH="${SSH_KEY_PATH:-}"
 REMOTE_DIR="${REMOTE_DIR:-/home/$EC2_USER/synthflow}"
 
-if [ ! -f "$KEY_PATH" ] && command -v cygpath >/dev/null 2>&1; then
+resolve_windows_profile_ssh_path() {
+    local candidate=""
+
+    if [ -n "${USERPROFILE:-}" ] && command -v wslpath >/dev/null 2>&1; then
+        candidate="$(wslpath "$USERPROFILE" 2>/dev/null || true)/.ssh/$KEY_FILE_NAME"
+        if [ -f "$candidate" ]; then
+            echo "$candidate"
+            return
+        fi
+    fi
+
+    if [ -n "${USERPROFILE:-}" ] && command -v cygpath >/dev/null 2>&1; then
+        candidate="$(cygpath -u "$USERPROFILE" 2>/dev/null || true)/.ssh/$KEY_FILE_NAME"
+        if [ -f "$candidate" ]; then
+            echo "$candidate"
+            return
+        fi
+    fi
+
+    echo ""
+}
+
+if [ -z "$KEY_PATH" ]; then
+    if [ -f "$HOME/.ssh/$KEY_FILE_NAME" ]; then
+        KEY_PATH="$HOME/.ssh/$KEY_FILE_NAME"
+    else
+        KEY_PATH="$(resolve_windows_profile_ssh_path)"
+    fi
+fi
+
+if [ -n "$KEY_PATH" ] && [ ! -f "$KEY_PATH" ] && command -v cygpath >/dev/null 2>&1; then
     WINDOWS_KEY_PATH=$(cygpath -u "$KEY_PATH" 2>/dev/null || true)
     if [ -n "$WINDOWS_KEY_PATH" ] && [ -f "$WINDOWS_KEY_PATH" ]; then
         KEY_PATH="$WINDOWS_KEY_PATH"
     fi
 fi
 
-if [ ! -f "$KEY_PATH" ] && command -v wslpath >/dev/null 2>&1; then
+if [ -n "$KEY_PATH" ] && [ ! -f "$KEY_PATH" ] && command -v wslpath >/dev/null 2>&1; then
     WINDOWS_KEY_PATH=$(wslpath "$KEY_PATH" 2>/dev/null || true)
     if [ -n "$WINDOWS_KEY_PATH" ] && [ -f "$WINDOWS_KEY_PATH" ]; then
         KEY_PATH="$WINDOWS_KEY_PATH"
@@ -26,7 +57,11 @@ fi
 
 if [ ! -f "$KEY_PATH" ]; then
     echo "SSH key not found at $KEY_PATH"
-    echo "Set SSH_KEY_PATH to the correct private key location on this machine before deploying."
+    echo "Looked for:"
+    echo "  - SSH_KEY_PATH (if set)"
+    echo "  - $HOME/.ssh/$KEY_FILE_NAME"
+    echo "  - %USERPROFILE%/.ssh/$KEY_FILE_NAME (WSL/Git Bash translated path)"
+    echo "Set SSH_KEY_PATH explicitly if your key is elsewhere."
     exit 1
 fi
 
@@ -49,7 +84,16 @@ fi
 echo "========================================="
 echo "  SynthFlow Deployment"
 echo "  Target: $EC2_USER@$EC2_IP"
+echo "  SSH key: $KEY_PATH"
 echo "========================================="
+
+echo ""
+echo ">>> Step 0: SSH preflight check..."
+if ! ssh -o BatchMode=yes -o ConnectTimeout=10 -o StrictHostKeyChecking=accept-new -i "$KEY_PATH" "$EC2_USER@$EC2_IP" "echo preflight_ok" >/dev/null 2>&1; then
+    echo "SSH preflight failed for $EC2_USER@$EC2_IP using key $KEY_PATH"
+    echo "Verify EC2_USER, key pair, and that the public key is present in ~/.ssh/authorized_keys on the instance."
+    exit 1
+fi
 
 # Step 1: Sync project files to EC2
 echo ""
