@@ -93,7 +93,20 @@ async def check_can_execute(db: AsyncSession, user_id: str) -> tuple[bool, str |
 
     Returns (can_execute, error_message).
     """
-    usage = await get_usage_summary(db, user_id)
+    user = (
+        await db.execute(select(User).where(User.id == user_id))
+    ).scalar_one_or_none()
+
+    if not user:
+        return False, "User not found"
+
+    billing_cycle = await _get_effective_billing_cycle(db, user)
+    usage = await get_usage_summary(
+        db,
+        user_id,
+        billing_cycle=billing_cycle,
+        billing_cycle_source="stripe" if billing_cycle else "fallback",
+    )
     if not usage:
         return False, "User not found"
 
@@ -115,7 +128,20 @@ async def check_can_create_workflow(
 
     Returns (can_create, error_message).
     """
-    usage = await get_usage_summary(db, user_id)
+    user = (
+        await db.execute(select(User).where(User.id == user_id))
+    ).scalar_one_or_none()
+
+    if not user:
+        return False, "User not found"
+
+    billing_cycle = await _get_effective_billing_cycle(db, user)
+    usage = await get_usage_summary(
+        db,
+        user_id,
+        billing_cycle=billing_cycle,
+        billing_cycle_source="stripe" if billing_cycle else "fallback",
+    )
     if not usage:
         return False, "User not found"
 
@@ -193,3 +219,29 @@ def _get_default_cycle_boundaries() -> tuple[datetime, datetime]:
         )
 
     return cycle_start, cycle_end
+
+
+async def _get_effective_billing_cycle(
+    db: AsyncSession, user: User
+) -> tuple[datetime, datetime] | None:
+    if not user.stripe_customer_id:
+        return None
+
+    from app.services import stripe_service
+
+    try:
+        (
+            _,
+            billing_cycle,
+        ) = await stripe_service.sync_user_subscription_state_from_stripe(
+            db,
+            user,
+        )
+        return billing_cycle
+    except Exception:
+        logger.warning(
+            "stripe_billing_cycle_lookup_failed",
+            user_id=user.id,
+            customer_id=user.stripe_customer_id,
+        )
+        return None
