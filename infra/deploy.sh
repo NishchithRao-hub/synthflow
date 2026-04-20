@@ -6,9 +6,9 @@
 set -e
 
 EC2_IP=$1
-EC2_USER="ec2-user"
+EC2_USER="${EC2_USER:-ec2-user}"
 KEY_PATH="${SSH_KEY_PATH:-$HOME/.ssh/synthflow-key.pem}"
-REMOTE_DIR="/home/ec2-user/synthflow"
+REMOTE_DIR="${REMOTE_DIR:-/home/$EC2_USER/synthflow}"
 
 if [ ! -f "$KEY_PATH" ] && command -v cygpath >/dev/null 2>&1; then
     WINDOWS_KEY_PATH=$(cygpath -u "$KEY_PATH" 2>/dev/null || true)
