@@ -1,4 +1,4 @@
-﻿# === Python ===
+# === Python ===
 __pycache__/
 *.py[cod]
 *.egg-info/
@@ -40,6 +40,9 @@ coverage/
 htmlcov/
 repomix-output.xml
 # project-roadmap-v2.md
+
+# Local deployment helper
+infra/deploy-production-steps.sh
 
 # === Frontend ===
 .env.local

@@ -10,6 +10,12 @@ import { ToastProvider } from "@/components/ui/toast";
 
 const GOOGLE_CLIENT_ID = process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID || "";
 
+if (!GOOGLE_CLIENT_ID) {
+  throw new Error(
+    "Missing NEXT_PUBLIC_GOOGLE_CLIENT_ID. Google login cannot initialize without it.",
+  );
+}
+
 export default function Providers({ children }: { children: React.ReactNode }) {
   const [queryClient] = useState(
     () =>

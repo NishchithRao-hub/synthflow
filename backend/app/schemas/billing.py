@@ -18,6 +18,7 @@ class BillingUsageResponse(BaseModel):
     plan: str
     billing_cycle_start: str
     billing_cycle_end: str
+    billing_cycle_source: str
     usage: UsageSummary
 
 

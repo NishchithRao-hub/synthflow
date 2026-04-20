@@ -24,7 +24,40 @@ async def get_usage(
     db: AsyncSession = Depends(get_db),
 ):
     """Get current billing cycle usage and limits."""
-    usage = await usage_service.get_usage_summary(db, current_user.id)
+    billing_cycle = None
+    billing_cycle_source = "fallback"
+
+    if current_user.stripe_customer_id:
+        try:
+            (
+                _,
+                billing_cycle,
+            ) = await stripe_service.sync_user_subscription_state_from_stripe(
+                db,
+                current_user,
+            )
+            if billing_cycle:
+                billing_cycle_source = "stripe"
+        except Exception as e:
+            logger.warning(
+                "billing_usage_sync_failed",
+                user_id=current_user.id,
+                error=str(e),
+            )
+
+    if current_user.stripe_customer_id and billing_cycle_source == "fallback":
+        logger.warning(
+            "billing_cycle_fallback_used",
+            user_id=current_user.id,
+            plan=current_user.plan,
+        )
+
+    usage = await usage_service.get_usage_summary(
+        db,
+        current_user.id,
+        billing_cycle=billing_cycle,
+        billing_cycle_source=billing_cycle_source,
+    )
     return BillingUsageResponse(**usage)
 
 
@@ -62,6 +95,26 @@ async def create_portal(
     )
 
     return PortalResponse(portal_url=portal_url)
+
+
+@router.post("/sync-subscription", response_model=BillingUsageResponse)
+async def sync_subscription(
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Force-refresh the current user's plan from Stripe and return usage."""
+    _, billing_cycle = await stripe_service.sync_user_subscription_state_from_stripe(
+        db,
+        current_user,
+    )
+    billing_cycle_source = "stripe" if billing_cycle else "fallback"
+    usage = await usage_service.get_usage_summary(
+        db,
+        current_user.id,
+        billing_cycle=billing_cycle,
+        billing_cycle_source=billing_cycle_source,
+    )
+    return BillingUsageResponse(**usage)
 
 
 @router.post("/stripe-webhook")

@@ -1,5 +1,8 @@
 # backend/app/services/stripe_service.py
 
+from datetime import datetime, timezone
+from typing import Any, Mapping, Sequence
+
 import stripe
 import structlog
 from sqlalchemy import select
@@ -272,3 +275,212 @@ async def _find_user_by_customer_id(db: AsyncSession, customer_id: str) -> User 
         select(User).where(User.stripe_customer_id == customer_id)
     )
     return result.scalar_one_or_none()
+
+
+async def sync_user_plan_from_stripe(db: AsyncSession, user: User) -> str:
+    """
+    Synchronize the user's plan from Stripe subscription status.
+
+    This provides an explicit, on-demand reconciliation path for UI flows
+    right after Checkout redirect, where webhook delivery can be delayed.
+    """
+    plan, _ = await sync_user_subscription_state_from_stripe(db, user)
+    return plan
+
+
+async def sync_user_subscription_state_from_stripe(
+    db: AsyncSession,
+    user: User,
+) -> tuple[str, tuple[datetime, datetime] | None]:
+    """Sync user plan and return current Stripe billing cycle in one fetch."""
+    customer_id = user.stripe_customer_id
+    if not customer_id:
+        return user.plan, None
+
+    try:
+        subscriptions = stripe.Subscription.list(
+            customer=customer_id,
+            status="all",
+            limit=20,
+        )
+
+        # Treat any active-like subscription as Pro.
+        active_like_statuses = {"active", "trialing", "past_due", "unpaid"}
+        has_pro_access = any(
+            sub.get("status") in active_like_statuses for sub in subscriptions.data
+        )
+
+        desired_plan = "pro" if has_pro_access else "free"
+        if user.plan != desired_plan:
+            user.plan = desired_plan
+            await db.flush()
+
+        billing_cycle = _extract_current_billing_cycle(subscriptions.data)
+
+        logger.info(
+            "stripe_plan_synced",
+            user_id=user.id,
+            customer_id=customer_id,
+            plan=user.plan,
+            billing_cycle_start=(
+                billing_cycle[0].isoformat() if billing_cycle else None
+            ),
+            billing_cycle_end=(billing_cycle[1].isoformat() if billing_cycle else None),
+        )
+
+        return user.plan, billing_cycle
+
+    except stripe.StripeError as e:
+        logger.error(
+            "stripe_plan_sync_failed",
+            user_id=user.id,
+            customer_id=customer_id,
+            error=str(e),
+        )
+        raise BadRequestException(f"Failed to sync subscription status: {str(e)}")
+
+
+async def get_current_billing_cycle(user: User) -> tuple[datetime, datetime] | None:
+    """Return the current Stripe billing cycle for the user, if available.
+
+    Chooses an active-like subscription first and falls back to the most recent
+    subscription that has period boundaries.
+    """
+    customer_id = user.stripe_customer_id
+    if not customer_id:
+        return None
+
+    try:
+        subscriptions = stripe.Subscription.list(
+            customer=customer_id,
+            status="all",
+            limit=20,
+        )
+        return _extract_current_billing_cycle(subscriptions.data)
+
+    except stripe.StripeError as e:
+        logger.error(
+            "stripe_billing_cycle_fetch_failed",
+            user_id=user.id,
+            customer_id=customer_id,
+            error=str(e),
+        )
+        raise BadRequestException(f"Failed to fetch billing cycle: {str(e)}")
+
+
+def _select_subscription_for_cycle(
+    subscriptions: Sequence[Mapping[str, Any]],
+) -> Mapping[str, Any] | None:
+    """Pick the best subscription candidate for cycle boundaries.
+
+    Prefer active-like subscriptions, then choose the most recently created
+    subscription to avoid stale older subscriptions when multiple exist.
+    """
+    if not subscriptions:
+        return None
+
+    if not subscriptions:
+        return None
+
+    status_priority = {
+        "active": 0,
+        "trialing": 1,
+        "past_due": 2,
+        "unpaid": 3,
+        "incomplete": 4,
+        "incomplete_expired": 5,
+        "canceled": 6,
+    }
+
+    selected = min(
+        subscriptions,
+        key=lambda sub: (
+            status_priority.get(str(sub.get("status")), 99),
+            -int(sub.get("created") or 0),
+            -int(sub.get("current_period_end") or 0),
+        ),
+    )
+
+    logger.info(
+        "stripe_billing_cycle_subscription_selected",
+        subscription_id=selected.get("id"),
+        status=selected.get("status"),
+        created=selected.get("created"),
+        current_period_start=selected.get("current_period_start"),
+        current_period_end=selected.get("current_period_end"),
+    )
+
+    return selected
+
+
+def _extract_current_billing_cycle(
+    subscriptions: Sequence[Mapping[str, Any]],
+) -> tuple[datetime, datetime] | None:
+    """Extract cycle boundaries from the best matching subscription."""
+    subscription = _select_subscription_for_cycle(subscriptions)
+    if not subscription:
+        return None
+
+    period_start = subscription.get("current_period_start")
+    period_end = subscription.get("current_period_end")
+    if isinstance(period_start, (int, float)) and isinstance(period_end, (int, float)):
+        return (
+            datetime.fromtimestamp(period_start, tz=timezone.utc),
+            datetime.fromtimestamp(period_end, tz=timezone.utc),
+        )
+
+    # Some Stripe API versions return null subscription period fields.
+    # In that case, derive cycle boundaries from the latest invoice line period.
+    invoice_cycle = _extract_cycle_from_latest_invoice(subscription)
+    if invoice_cycle:
+        return invoice_cycle
+
+    return None
+
+
+def _extract_cycle_from_latest_invoice(
+    subscription: Mapping[str, Any],
+) -> tuple[datetime, datetime] | None:
+    """Extract cycle from latest invoice line period for a subscription."""
+    latest_invoice = subscription.get("latest_invoice")
+    invoice_id = (
+        latest_invoice.get("id")
+        if isinstance(latest_invoice, Mapping)
+        else latest_invoice
+    )
+    if not isinstance(invoice_id, str) or not invoice_id:
+        return None
+
+    try:
+        invoice = stripe.Invoice.retrieve(invoice_id, expand=["lines.data.period"])
+    except stripe.StripeError as e:
+        logger.warning(
+            "stripe_invoice_cycle_fetch_failed",
+            subscription_id=subscription.get("id"),
+            invoice_id=invoice_id,
+            error=str(e),
+        )
+        return None
+
+    lines = invoice.get("lines", {}).get("data", [])
+    candidate_periods: list[tuple[int, int]] = []
+
+    for line in lines:
+        period = line.get("period", {})
+        start = period.get("start")
+        end = period.get("end")
+        if (
+            isinstance(start, (int, float))
+            and isinstance(end, (int, float))
+            and end > start
+        ):
+            candidate_periods.append((int(start), int(end)))
+
+    if not candidate_periods:
+        return None
+
+    start_ts, end_ts = max(candidate_periods, key=lambda p: p[1])
+    return (
+        datetime.fromtimestamp(start_ts, tz=timezone.utc),
+        datetime.fromtimestamp(end_ts, tz=timezone.utc),
+    )

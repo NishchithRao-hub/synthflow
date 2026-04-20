@@ -133,6 +133,10 @@ export function AuthProvider({
     setAccessToken(null);
     localStorage.removeItem("synthflow_refresh_token");
     setState({ user: null, isLoading: false, isAuthenticated: false });
+
+    if (typeof window !== "undefined") {
+      window.location.replace(window.location.origin + "/");
+    }
   }, []);
 
   const refreshUser = useCallback(async () => {
