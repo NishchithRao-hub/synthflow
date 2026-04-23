@@ -51,6 +51,7 @@ def recover_dead_runs() -> dict:
             return {"recovered": 0, "run_ids": []}
 
         for run in stuck_runs:
+            original_status = run.status
             run.status = "timed_out"
             run.completed_at = datetime.now(timezone.utc)
             run.execution_context = {
@@ -59,7 +60,7 @@ def recover_dead_runs() -> dict:
                     "reason": "Run exceeded stuck threshold",
                     "threshold_minutes": STUCK_RUN_THRESHOLD_MINUTES,
                     "recovered_at": datetime.now(timezone.utc).isoformat(),
-                    "original_status": run.status,
+                    "original_status": original_status,
                 },
             }
 
@@ -70,7 +71,7 @@ def recover_dead_runs() -> dict:
                 "dead_run_recovered",
                 run_id=run.id,
                 workflow_id=run.workflow_id,
-                original_status=run.status,
+                original_status=original_status,
                 created_at=run.created_at.isoformat() if run.created_at else None,
                 stuck_minutes=STUCK_RUN_THRESHOLD_MINUTES,
             )
