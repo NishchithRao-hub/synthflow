@@ -1,38 +1,94 @@
 # infra/nginx/conf.d/ssl.conf.template
-# Rename to ssl.conf after obtaining SSL certificates
+# Rendered at deploy-time into ssl.conf by infra/deploy.sh.
 
-server {
-    listen 80;
-    server_name YOUR_DOMAIN;
+# HTTPS server for production traffic.
 
-    # Let's Encrypt challenge
-    location /.well-known/acme-challenge/ {
-        root /var/www/certbot;
-    }
+upstream frontend_https {
+    server frontend:3000;
+}
 
-    # Redirect all HTTP to HTTPS
-    location / {
-        return 301 https://$host$request_uri;
-    }
+upstream backend_https {
+    server backend:8000;
 }
 
 server {
     listen 443 ssl;
-    server_name YOUR_DOMAIN;
+    server_name __NGINX_SERVER_NAME__;
 
-    ssl_certificate /etc/letsencrypt/live/YOUR_DOMAIN/fullchain.pem;
-    ssl_certificate_key /etc/letsencrypt/live/YOUR_DOMAIN/privkey.pem;
+    ssl_certificate /etc/letsencrypt/live/__LETSENCRYPT_CERT_NAME__/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/__LETSENCRYPT_CERT_NAME__/privkey.pem;
 
-    # SSL settings
     ssl_protocols TLSv1.2 TLSv1.3;
     ssl_ciphers HIGH:!aNULL:!MD5;
     ssl_prefer_server_ciphers on;
     ssl_session_cache shared:SSL:10m;
     ssl_session_timeout 10m;
 
-    # HSTS
     add_header Strict-Transport-Security "max-age=31536000; includeSubDomains" always;
 
-    # All the location blocks from default.conf go here
-    # (API, WebSocket, webhooks, frontend)
+    location /api/ {
+        limit_req zone=api_limit burst=20 nodelay;
+
+        proxy_pass http://backend_https;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto https;
+
+        proxy_read_timeout 120s;
+        proxy_send_timeout 120s;
+    }
+
+    location /ws/ {
+        proxy_pass http://backend_https;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection "upgrade";
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto https;
+
+        proxy_read_timeout 3600s;
+        proxy_send_timeout 3600s;
+    }
+
+    location /webhooks/ {
+        limit_req zone=webhook_limit burst=5 nodelay;
+
+        proxy_pass http://backend_https;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto https;
+    }
+
+    location /api/billing/stripe-webhook {
+        proxy_pass http://backend_https;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto https;
+
+        proxy_request_buffering off;
+    }
+
+    location /docs {
+        proxy_pass http://backend_https;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+    }
+
+    location /openapi.json {
+        proxy_pass http://backend_https;
+        proxy_set_header Host $host;
+    }
+
+    location / {
+        proxy_pass http://frontend_https;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto https;
+    }
 }

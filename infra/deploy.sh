@@ -10,6 +10,8 @@ EC2_USER="${EC2_USER:-ec2-user}"
 KEY_FILE_NAME="${SYNTHFLOW_SSH_KEY_NAME:-synthflow-key.pem}"
 KEY_PATH="${SSH_KEY_PATH:-}"
 REMOTE_DIR="${REMOTE_DIR:-/home/$EC2_USER/synthflow}"
+SSH_STRICT_HOST_KEY_CHECKING="${SSH_STRICT_HOST_KEY_CHECKING:-yes}"
+SSH_KNOWN_HOSTS_FILE="${SSH_KNOWN_HOSTS_FILE:-$HOME/.ssh/known_hosts}"
 
 resolve_windows_profile_ssh_path() {
     local candidate=""
@@ -91,16 +93,35 @@ if [ -z "$EC2_IP" ]; then
     exit 1
 fi
 
+mkdir -p "$(dirname "$SSH_KNOWN_HOSTS_FILE")"
+touch "$SSH_KNOWN_HOSTS_FILE"
+chmod 600 "$SSH_KNOWN_HOSTS_FILE" 2>/dev/null || true
+
+if [ "$SSH_STRICT_HOST_KEY_CHECKING" = "yes" ]; then
+    SSH_HOSTKEY_OPTS="-o StrictHostKeyChecking=yes"
+else
+    SSH_HOSTKEY_OPTS="-o StrictHostKeyChecking=accept-new"
+    echo "WARNING: SSH_STRICT_HOST_KEY_CHECKING is not 'yes'. Host key trust-on-first-use is enabled."
+fi
+
+SSH_COMMON_OPTS="-o BatchMode=yes -o ConnectTimeout=10 -o UserKnownHostsFile=$SSH_KNOWN_HOSTS_FILE $SSH_HOSTKEY_OPTS"
+
 echo "========================================="
 echo "  SynthFlow Deployment"
 echo "  Target: $EC2_USER@$EC2_IP"
 echo "  SSH key: $KEY_PATH"
+echo "  SSH strict host key checking: $SSH_STRICT_HOST_KEY_CHECKING"
 echo "========================================="
 
 echo ""
 echo ">>> Step 0: SSH preflight check..."
-if ! ssh -o BatchMode=yes -o ConnectTimeout=10 -o StrictHostKeyChecking=accept-new -i "$KEY_PATH" "$EC2_USER@$EC2_IP" "echo preflight_ok" >/dev/null 2>&1; then
+if ! ssh $SSH_COMMON_OPTS -i "$KEY_PATH" "$EC2_USER@$EC2_IP" "echo preflight_ok" >/dev/null 2>&1; then
     echo "SSH preflight failed for $EC2_USER@$EC2_IP using key $KEY_PATH"
+    if [ "$SSH_STRICT_HOST_KEY_CHECKING" = "yes" ]; then
+        echo "Host key verification failed or host key is unknown."
+        echo "Verify the host key fingerprint out-of-band, then add it to known_hosts:"
+        echo "  ssh-keyscan -H $EC2_IP >> $SSH_KNOWN_HOSTS_FILE"
+    fi
     echo "Verify EC2_USER, key pair, and that the public key is present in ~/.ssh/authorized_keys on the instance."
     exit 1
 fi
@@ -108,7 +129,7 @@ fi
 # Step 1: Sync project files to EC2
 echo ""
 echo ">>> Step 1: Syncing project files..."
-ssh -i "$KEY_PATH" "$EC2_USER@$EC2_IP" "mkdir -p $REMOTE_DIR"
+ssh $SSH_COMMON_OPTS -i "$KEY_PATH" "$EC2_USER@$EC2_IP" "mkdir -p $REMOTE_DIR"
 
 # Use rsync if available, fallback to scp
 if command -v rsync &> /dev/null; then
@@ -123,11 +144,11 @@ if command -v rsync &> /dev/null; then
         --exclude '.env' \
         --exclude '.env.local' \
         --exclude '.env.production' \
-        -e "ssh -i $KEY_PATH" \
+        -e "ssh $SSH_COMMON_OPTS -i $KEY_PATH" \
         ./ "$EC2_USER@$EC2_IP:$REMOTE_DIR/"
 else
     echo "rsync not found, using scp (slower)..."
-    scp -i "$KEY_PATH" -r \
+    scp $SSH_COMMON_OPTS -i "$KEY_PATH" -r \
         backend/ frontend/ infra/ docker-compose.yml \
         "$EC2_USER@$EC2_IP:$REMOTE_DIR/"
 fi
@@ -136,7 +157,7 @@ fi
 echo ""
 echo ">>> Step 2: Copying production environment file..."
 if [ -f ".env.production" ]; then
-    scp -i "$KEY_PATH" .env.production "$EC2_USER@$EC2_IP:$REMOTE_DIR/.env.production"
+    scp $SSH_COMMON_OPTS -i "$KEY_PATH" .env.production "$EC2_USER@$EC2_IP:$REMOTE_DIR/.env.production"
 else
     echo "WARNING: .env.production not found! Create it before deploying."
     echo "Copy from infra/.env.production.example and fill in values."
@@ -146,13 +167,31 @@ fi
 # Step 3: Build and start on EC2
 echo ""
 echo ">>> Step 3: Building and starting services on EC2..."
-ssh -i "$KEY_PATH" "$EC2_USER@$EC2_IP" << 'REMOTE_SCRIPT'
+ssh $SSH_COMMON_OPTS -i "$KEY_PATH" "$EC2_USER@$EC2_IP" << 'REMOTE_SCRIPT'
     cd ~/synthflow
 
     sed -i 's/\r$//' ./.env.production
     set -a
     . ./.env.production
     set +a
+
+    # Render SSL config from template so domain/cert names come from env.
+    NGINX_SERVER_NAME="${NGINX_SERVER_NAME:-}"
+    if [ -z "$NGINX_SERVER_NAME" ] && [ -n "${FRONTEND_URL:-}" ]; then
+        NGINX_SERVER_NAME=$(printf '%s' "$FRONTEND_URL" | sed -E 's#^[a-zA-Z]+://([^/:]+).*$#\1#')
+    fi
+    if [ -z "$NGINX_SERVER_NAME" ] && [ -n "${BACKEND_URL:-}" ]; then
+        NGINX_SERVER_NAME=$(printf '%s' "$BACKEND_URL" | sed -E 's#^[a-zA-Z]+://([^/:]+).*$#\1#')
+    fi
+    NGINX_SERVER_NAME="${NGINX_SERVER_NAME:-localhost}"
+    LETSENCRYPT_CERT_NAME="${LETSENCRYPT_CERT_NAME:-$NGINX_SERVER_NAME}"
+
+    if [ -f infra/nginx/conf.d/ssl.conf.template ]; then
+        sed \
+            -e "s#__NGINX_SERVER_NAME__#$NGINX_SERVER_NAME#g" \
+            -e "s#__LETSENCRYPT_CERT_NAME__#$LETSENCRYPT_CERT_NAME#g" \
+            infra/nginx/conf.d/ssl.conf.template > infra/nginx/conf.d/ssl.conf
+    fi
 
     echo "--- Stopping existing containers ---"
     cd infra
