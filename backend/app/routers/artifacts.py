@@ -3,10 +3,18 @@
 import structlog
 from fastapi import APIRouter, Depends, Query
 from fastapi.responses import JSONResponse
+from sqlalchemy import select
 
+from app.core.database import async_session_factory
 from app.core.dependencies import get_current_user
-from app.core.exceptions import BadRequestException, NotFoundException
+from app.core.exceptions import (
+    BadRequestException,
+    ForbiddenException,
+    NotFoundException,
+)
 from app.models.user import User
+from app.models.workflow import Workflow
+from app.models.workflow_run import WorkflowRun
 from app.services.storage_service import (
     download_artifact,
     get_artifact_url,
@@ -16,6 +24,40 @@ from app.services.storage_service import (
 logger = structlog.get_logger()
 
 router = APIRouter(prefix="/api/artifacts", tags=["Artifacts"])
+
+
+async def _assert_artifact_access(key: str, user_id: str) -> None:
+    """
+    Validate artifact key format and enforce tenant ownership.
+
+    Expected key format: artifacts/{run_id}/{node_id}/output.json
+    """
+    if not key or not key.startswith("artifacts/"):
+        raise BadRequestException("Invalid artifact key")
+
+    parts = key.split("/")
+    if len(parts) < 3:
+        raise BadRequestException("Invalid artifact key format")
+
+    run_id = parts[1]
+    if not run_id:
+        raise BadRequestException("Invalid artifact key format")
+
+    async with async_session_factory() as db:
+        run = (
+            await db.execute(select(WorkflowRun).where(WorkflowRun.id == run_id))
+        ).scalar_one_or_none()
+        if not run:
+            raise NotFoundException("WorkflowRun", run_id)
+
+        workflow = (
+            await db.execute(select(Workflow).where(Workflow.id == run.workflow_id))
+        ).scalar_one_or_none()
+        if not workflow:
+            raise NotFoundException("Workflow", run.workflow_id)
+
+        if workflow.owner_id != user_id:
+            raise ForbiddenException()
 
 
 @router.get("/url")
@@ -31,14 +73,7 @@ async def get_artifact_download_url(
     For S3: returns a pre-signed URL (valid for 15 minutes).
     For local storage: returns a direct download URL.
     """
-    if not key or not key.startswith("artifacts/"):
-        raise BadRequestException("Invalid artifact key")
-
-    # Verify the artifact exists
-    # Extract run_id from key to verify ownership (artifacts/run_id/node_id/output.json)
-    parts = key.split("/")
-    if len(parts) < 3:
-        raise BadRequestException("Invalid artifact key format")
+    await _assert_artifact_access(key, current_user.id)
 
     url = get_artifact_url(key, expires_in=900)
 
@@ -63,8 +98,7 @@ async def download_artifact_direct(
     Used as fallback when S3 pre-signed URLs aren't available
     (local development). Returns the artifact content as JSON.
     """
-    if not key or not key.startswith("artifacts/"):
-        raise BadRequestException("Invalid artifact key")
+    await _assert_artifact_access(key, current_user.id)
 
     data = download_artifact(key)
     if data is None:
@@ -89,12 +123,7 @@ async def list_run_artifacts(
     Checks the run's node execution logs for artifact references
     and returns download URLs for each.
     """
-    from sqlalchemy import select
-
-    from app.core.database import async_session_factory
     from app.models.node_execution_log import NodeExecutionLog
-    from app.models.workflow import Workflow
-    from app.models.workflow_run import WorkflowRun
 
     async with async_session_factory() as db:
         # Verify run exists and user has access

@@ -15,7 +15,7 @@ from app.schemas.execution import (
     RunListItem,
     RunListResponse,
 )
-from app.services import execution_service
+from app.services import execution_service, workflow_service
 
 router = APIRouter(prefix="/api", tags=["Execution"])
 
@@ -114,6 +114,9 @@ async def list_workflow_runs(
 
     Supports filtering by status and pagination. Sorted by creation date (newest first).
     """
+    # Authorize access to the workflow before returning any run metadata.
+    await workflow_service.get_workflow_by_id(db, workflow_id, current_user.id)
+
     # Count total
     count_query = (
         select(func.count())
