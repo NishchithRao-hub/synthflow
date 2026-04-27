@@ -8,8 +8,8 @@ export const metadata: Metadata = {
   title: "SynthFlow",
   description: "Design, execute, and monitor AI-powered automation workflows",
   icons: {
-    icon: "/favicon.ico",
-    shortcut: "/favicon.ico",
+    icon: "/logo.png",
+    shortcut: "/logo.png",
     apple: "/logo.png",
   },
 };
