@@ -33,9 +33,7 @@ SynthFlow helps you build and run AI-driven automation workflows with:
 
 You can try the Synthflow workflow automation tool using the below link:
 
-```bash
-https://34.204.179.128.nip.io/
-```
+[https://34.204.179.128.nip.io/](https://34.204.179.128.nip.io/)
 
 ## Architecture
 
@@ -57,11 +55,9 @@ flowchart LR
 	WS --> REDIS
 ```
 
-### Optional Image Placeholder
-
-Add a polished architecture image here when ready:
-
 ![Architecture Diagram Placeholder](docs/assets/architecture-overview.png)
+
+The above image shows a detailed architectural diagram with tech stacks with clean data and execution flow.
 
 ## Tech Stack
 
@@ -118,19 +114,18 @@ poetry run alembic upgrade head
 poetry run uvicorn app.main:app --reload --port 8000
 ```
 
-In another terminal, start worker and beat:
+In another terminal, start worker:
 
 ```bash
 cd backend
 poetry run celery -A app.worker.celery_app worker --loglevel=info --pool=prefork --concurrency=2 --queues=default,execution
-```
 
-On Windows, use the solo pool instead of prefork:
-
-```bash
+# On Windows, use the solo pool instead of prefork:
 cd backend
 poetry run celery -A app.worker.celery_app worker --loglevel=info --pool=solo --queues=default,execution
 ```
+
+In another terminal, start beat:
 
 ```bash
 cd backend
@@ -214,12 +209,12 @@ npm run start
 
 When deployed behind domain:
 
-- https://<your-domain>/docs
-- https://<your-domain>/redoc
+- https://your-domain/docs
+- https://your-domain/redoc
 
 WebSocket pattern:
 
-- ws(s)://<host>/ws/runs/{run_id}?token={jwt_access_token}
+- ws(s)://host/ws/runs/{run_id}?token={jwt_access_token}
 
 ## Deployment (Production)
 
@@ -249,21 +244,31 @@ The deploy script syncs files, builds containers, starts services, checks health
 
 ![Homepage Placeholder](docs/assets/synthflow-homepage.png)
 
+This is the landing Synthflow homepage.
+
 ### Dashboard
 
 ![Dashboard Placeholder](docs/assets/dashboard-overview.png)
+
+The above image shows the dashboard overview upon login which displays all created workflows.
 
 ### Workflow Builder
 
 ![Workflow Builder Placeholder](docs/assets/workflow-builder.png)
 
+The image shows building a workflow using drag and drop node types and configurations.
+
 ### Run Monitor
 
 ![Run Monitor Placeholder](docs/assets/run-monitor.png)
 
+The above image shows execution of a workflow with status and event logs.
+
 ### Billing and Usage
 
 ![Billing Placeholder](docs/assets/billing-usage.png)
+
+The image shows real-time stats of workflows created, runs and AI calls and their maximum limit based on current user plan.
 
 ### End-to-End Demo GIF
 
@@ -282,4 +287,4 @@ Detailed docs are available in docs:
 
 ## License
 
-MIT (see LICENSE)
+MIT (see [LICENSE](LICENSE))

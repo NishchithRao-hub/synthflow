@@ -3,7 +3,7 @@
 ## API Base URL
 
 - Local: http://localhost:8000
-- Production: https://<your-domain>
+- Production: https://your-production-url
 
 ## Interactive API Docs
 
@@ -87,7 +87,7 @@ Typical flow:
 Endpoint pattern:
 
 - ws://localhost:8000/ws/runs/{run_id}?token={jwt}
-- wss://<your-domain>/ws/runs/{run_id}?token={jwt}
+- wss://your-domain/ws/runs/{run_id}?token={jwt}
 
 Event families you can expect:
 
@@ -128,7 +128,14 @@ curl "http://localhost:8000/api/billing/usage" \
 - Usage-limit violations return clear 403 responses
 - Health/readiness endpoints help classify infra vs app-level failures
 
-## API Image Placeholders
+### Swagger documentation
 
-- Swagger screenshot: assets/api-swagger.png
-- ReDoc screenshot: assets/api-redoc.png
+![Swagger Placeholder](assets/api-swagger.png)
+
+The above image shows Swagger documentation for all APIs.
+
+### Redoc documentation
+
+![Redoc Placeholder](assets/api-redoc.png)
+
+This image shows Redoc documentation.

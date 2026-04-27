@@ -101,8 +101,8 @@ flowchart LR
 - Encrypted storage for sensitive user API keys
 - Rate limiting for public trigger surfaces (webhook endpoints)
 
-## Architecture Image Placeholder
-
-Add your final architecture image here:
+## Architecture diagram
 
 ![Architecture Placeholder](assets/architecture-overview.png)
+
+The above image shows a detailed architectural diagram with tech stacks with clean data and execution flow.

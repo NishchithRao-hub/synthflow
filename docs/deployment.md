@@ -70,24 +70,24 @@ What deploy.sh does:
 Health:
 
 ```bash
-curl -s https://<your-domain>/api/health
-curl -s https://<your-domain>/api/health/ready
+curl -s https://your-domain/api/health
+curl -s https://your-domain/api/health/ready
 ```
 
 API docs:
 
-- https://<your-domain>/docs
-- https://<your-domain>/redoc
+- https://your-domain/docs
+- https://your-domain/redoc
 
 Frontend:
 
-- https://<your-domain>/
+- https://your-domain/
 
 ## 5) Stripe Webhook Setup
 
 Set Stripe webhook destination to:
 
-- https://<your-domain>/api/billing/stripe-webhook
+- https://your-domain/api/billing/stripe-webhook
 
 Use corresponding secret in STRIPE_WEBHOOK_SECRET.
 
@@ -133,9 +133,26 @@ docker exec synthflow-api alembic upgrade head
 - Backups and retention policy validated
 - Health checks integrated into monitoring
 
-## Deployment Screenshot Placeholders
+### EC2 dashboard
 
-- EC2 dashboard screenshot: assets/deploy-ec2.png
-- RDS config screenshot: assets/deploy-rds.png
-- Running containers screenshot: assets/deploy-containers.png
-- Live production app screenshot: assets/deploy-live-app.png
+![EC2 Dashboard Placeholder](assets/deploy-ec2.png)
+
+The image shows the live AWS EC2 instance and dashboard details.
+
+### RDS Config dashboard
+
+![RDS Config Dashboard Placeholder](assets/deploy-rds.png)
+
+The above image shows the AWS RDS configuration and its details.
+
+### Running containers
+
+![Containers Placeholder](assets/deploy-containers.png)
+
+The image shows the running docker containers (workers, infra, backend) for production.
+
+### Live Production App
+
+![Production Placeholder](assets/deploy-live-app.png)
+
+The above image shows the landing homepage for Synthflow live in production environment.
