@@ -138,4 +138,4 @@ The above image shows Swagger documentation for all APIs.
 
 ![Redoc Placeholder](assets/api-redoc.png)
 
-This image shows Redoc documentation.
+This image shows Redoc documentation with all API responses and request formats.

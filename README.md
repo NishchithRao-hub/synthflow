@@ -143,7 +143,7 @@ npm run dev
 Frontend .env.local template:
 
 ```env
-NEXT_PUBLIC_API_URL=http://127.0.0.1:8000
+NEXT_PUBLIC_API_UR=http://127.0.0.1:8000
 NEXT_PUBLIC_GOOGLE_CLIENT_ID=your_google_client_id
 ```
 

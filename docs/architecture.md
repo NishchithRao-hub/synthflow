@@ -105,4 +105,4 @@ flowchart LR
 
 ![Architecture Placeholder](assets/architecture-overview.png)
 
-The above image shows a detailed architectural diagram with tech stacks with clean data and execution flow.
+The above image shows a detailed architectural diagram showing used tech stacks with general data and execution flow.

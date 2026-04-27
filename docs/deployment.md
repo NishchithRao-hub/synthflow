@@ -149,7 +149,7 @@ The above image shows the AWS RDS configuration and its details.
 
 ![Containers Placeholder](assets/deploy-containers.png)
 
-The image shows the running docker containers (workers, infra, backend) for production.
+The image shows the running docker containers (worker, beat, backend and frontend) for production.
 
 ### Live Production App
 
