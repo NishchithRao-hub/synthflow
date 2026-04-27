@@ -6,13 +6,37 @@ import json
 import structlog
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 from jose import JWTError
+from sqlalchemy import select
 
 from app.core.auth import verify_access_token
+from app.core.database import async_session_factory
 from app.core.pubsub import get_async_redis, get_channel_name
+from app.models.workflow import Workflow
+from app.models.workflow_run import WorkflowRun
 
 logger = structlog.get_logger()
 
 router = APIRouter(tags=["WebSocket"])
+
+
+async def _can_access_run(user_id: str, run_id: str) -> bool:
+    async with async_session_factory() as db:
+        workflow_id = (
+            await db.execute(
+                select(WorkflowRun.workflow_id).where(WorkflowRun.id == run_id)
+            )
+        ).scalar_one_or_none()
+
+        if not workflow_id:
+            return False
+
+        owner_id = (
+            await db.execute(
+                select(Workflow.owner_id).where(Workflow.id == workflow_id)
+            )
+        ).scalar_one_or_none()
+
+        return owner_id == user_id
 
 
 @router.websocket("/ws/runs/{run_id}")
@@ -44,6 +68,10 @@ async def run_websocket(websocket: WebSocket, run_id: str):
         user_id = payload.get("sub")
     except JWTError:
         await websocket.close(code=4001, reason="Invalid or expired token")
+        return
+
+    if not user_id or not await _can_access_run(user_id, run_id):
+        await websocket.close(code=4403, reason="Not authorized for this run")
         return
 
     # Accept the connection

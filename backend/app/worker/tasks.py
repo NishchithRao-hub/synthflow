@@ -260,9 +260,6 @@ def _execute_run(run_id: str) -> dict:
             db.add(log_entry)
             db.flush()
 
-            # Get retry policy from node config
-            retry_policy = RetryPolicy.from_node_config(node_config)
-
             # Get retry policy and timeout from node config
             retry_policy = RetryPolicy.from_node_config(node_config)
             timeout_config = TimeoutConfig.from_node_config(node_type, node_config)

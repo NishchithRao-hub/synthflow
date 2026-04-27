@@ -88,8 +88,21 @@ async def check_rate_limit(
         }
 
     except Exception as e:
-        # If Redis is down, allow the request (fail open)
+        # In production, fail closed to avoid abuse during limiter outages.
+        # In non-production, fail open to keep local/dev workflows usable.
         logger.error("rate_limit_check_failed", error=str(e))
+        environment = settings.ENVIRONMENT.lower().strip()
+        fail_closed = environment in {"production", "prod"}
+
+        if fail_closed:
+            return False, {
+                "limit": max_requests,
+                "remaining": 0,
+                "reset_seconds": window_seconds,
+                "current": max_requests,
+                "error": "Rate limiter unavailable",
+            }
+
         return True, {
             "limit": max_requests,
             "remaining": max_requests,

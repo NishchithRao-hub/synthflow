@@ -132,7 +132,7 @@ export default function LandingPage() {
               }}
             />
             <div
-              className="hidden flex items-center justify-center w-9 h-9 rounded-xl"
+              className="hidden items-center justify-center w-9 h-9 rounded-xl"
               style={{
                 background: "linear-gradient(135deg, #7c3aed, #6366f1)",
               }}
@@ -676,49 +676,49 @@ export default function LandingPage() {
             <TechCard
               name="FastAPI"
               category="Backend API"
-              icon="⚡"
+              logoSrc="/fastapi.png"
               color="#009688"
             />
             <TechCard
               name="Next.js"
               category="Frontend"
-              icon="▲"
+              logoSrc="/nextjs.png"
               color="#000000"
             />
             <TechCard
               name="PostgreSQL"
               category="Database"
-              icon="🐘"
+              logoSrc="/postgresql.png"
               color="#336791"
             />
             <TechCard
               name="Redis"
               category="Cache & Queue"
-              icon="🔴"
+              logoSrc="/redis.png"
               color="#dc382d"
             />
             <TechCard
               name="Celery"
               category="Task Workers"
-              icon="🌿"
-              color="#37b24d"
+              logoSrc="/celery.png"
+              color="#dc382d"
             />
             <TechCard
-              name="React Flow"
+              name="React"
               category="Visual Canvas"
-              icon="🔀"
-              color="#ff0072"
+              logoSrc="/react.png"
+              color="#336791"
             />
             <TechCard
               name="Stripe"
               category="Payments"
-              icon="💳"
+              logoSrc="/stripe.png"
               color="#6772e5"
             />
             <TechCard
               name="AWS"
               category="Cloud Infra"
-              icon="☁️"
+              logoSrc="/aws.png"
               color="#ff9900"
             />
           </div>
@@ -1364,14 +1364,25 @@ function PricingFeature({
 function TechCard({
   name,
   category,
-  icon,
+  logoSrc,
   color,
 }: {
   name: string;
   category: string;
-  icon: string;
+  logoSrc: string;
   color: string;
 }) {
+  const fallbackIcons: Record<string, string> = {
+    FastAPI: "⚡",
+    "Next.js": "▲",
+    PostgreSQL: "🐘",
+    Redis: "🔴",
+    Celery: "🌿",
+    "React Flow": "⚛",
+    Stripe: "S",
+    AWS: "☁",
+  };
+
   return (
     <div
       className="group rounded-xl border p-5 text-center transition-all duration-300 hover:translate-y-[-3px]"
@@ -1389,8 +1400,30 @@ function TechCard({
         e.currentTarget.style.boxShadow = "0 8px 20px rgba(15,23,42,0.08)";
       }}
     >
-      <div className="text-2xl mb-2 transition-transform duration-300 group-hover:scale-110">
-        {icon}
+      <div className="mb-2 transition-transform duration-300 group-hover:scale-110 flex justify-center">
+        <div
+          className="w-10 h-10 rounded-lg flex items-center justify-center"
+          style={{ background: `${color}12` }}
+        >
+          <Image
+            src={logoSrc}
+            alt={`${name} logo`}
+            width={24}
+            height={24}
+            className="w-6 h-6 object-contain"
+            onError={(e) => {
+              e.currentTarget.style.display = "none";
+              e.currentTarget.nextElementSibling?.classList.remove("hidden");
+            }}
+          />
+          <span
+            className="hidden text-sm font-bold leading-none"
+            style={{ color }}
+            aria-hidden="true"
+          >
+            {fallbackIcons[name] ?? "•"}
+          </span>
+        </div>
       </div>
       <p className="text-sm font-bold mb-0.5" style={{ color: "#1a1a2e" }}>
         {name}

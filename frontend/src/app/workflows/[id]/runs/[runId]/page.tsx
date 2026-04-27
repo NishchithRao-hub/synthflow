@@ -118,7 +118,7 @@ export default function RunDetailPage() {
 
   return (
     <AppLayout userName={user.name} userEmail={user.email} onLogout={logout}>
-      <div className="p-8 max-w-4xl">
+      <div className="w-full max-w-4xl min-w-0 p-8 overflow-x-hidden">
         {/* Header */}
         <div className="flex items-center gap-3 mb-6">
           <button
@@ -325,7 +325,7 @@ function NodeTimelineCard({
   const Icon = config.icon;
 
   return (
-    <div className="flex gap-3">
+    <div className="flex gap-3 min-w-0">
       {/* Timeline line */}
       <div className="flex flex-col items-center">
         <div
@@ -348,7 +348,7 @@ function NodeTimelineCard({
 
       {/* Content */}
       <div
-        className="flex-1 rounded-xl border p-4 mb-1"
+        className="flex-1 min-w-0 rounded-xl border p-4 mb-1"
         style={{
           backgroundColor: "var(--bg-card)",
           borderColor:
@@ -458,7 +458,7 @@ function JsonViewer({ data }: { data: Record<string, unknown> }) {
         {copied ? <Check size={12} /> : <Copy size={12} />}
       </button>
       <pre
-        className="p-4 rounded-lg text-xs overflow-x-auto max-h-64 overflow-y-auto"
+        className="p-4 rounded-lg text-xs max-h-64 overflow-y-auto overflow-x-hidden whitespace-pre-wrap break-words"
         style={{
           backgroundColor: "var(--bg-tertiary)",
           color: "var(--text-secondary)",

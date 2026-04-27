@@ -10,12 +10,6 @@ import { ToastProvider } from "@/components/ui/toast";
 
 const GOOGLE_CLIENT_ID = process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID || "";
 
-if (!GOOGLE_CLIENT_ID) {
-  throw new Error(
-    "Missing NEXT_PUBLIC_GOOGLE_CLIENT_ID. Google login cannot initialize without it.",
-  );
-}
-
 export default function Providers({ children }: { children: React.ReactNode }) {
   const [queryClient] = useState(
     () =>
@@ -30,13 +24,26 @@ export default function Providers({ children }: { children: React.ReactNode }) {
       }),
   );
 
+  const appTree = (
+    <QueryClientProvider client={queryClient}>
+      <ToastProvider>
+        <AuthProvider>{children}</AuthProvider>
+      </ToastProvider>
+    </QueryClientProvider>
+  );
+
+  if (!GOOGLE_CLIENT_ID) {
+    if (typeof window !== "undefined") {
+      console.warn(
+        "NEXT_PUBLIC_GOOGLE_CLIENT_ID is missing. Google OAuth login is disabled.",
+      );
+    }
+    return appTree;
+  }
+
   return (
     <GoogleOAuthProvider clientId={GOOGLE_CLIENT_ID}>
-      <QueryClientProvider client={queryClient}>
-        <ToastProvider>
-          <AuthProvider>{children}</AuthProvider>
-        </ToastProvider>
-      </QueryClientProvider>
+      {appTree}
     </GoogleOAuthProvider>
   );
 }

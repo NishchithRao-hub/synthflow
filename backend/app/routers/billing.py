@@ -157,5 +157,9 @@ async def stripe_webhook(request: Request):
         except Exception as e:
             logger.error("stripe_webhook_processing_failed", error=str(e))
             await db.rollback()
+            return JSONResponse(
+                status_code=500,
+                content={"error": "Webhook processing failed"},
+            )
 
     return JSONResponse(status_code=200, content={"received": True})

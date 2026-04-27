@@ -24,7 +24,7 @@ export default function AppLayout({
     >
       <Sidebar userName={userName} userEmail={userEmail} onLogout={onLogout} />
       <main
-        className="min-h-screen"
+        className="min-h-screen min-w-0 overflow-x-hidden"
         style={{ marginLeft: "var(--sidebar-width)" }}
       >
         {children}
