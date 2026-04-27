@@ -63,7 +63,7 @@ export default function RunMonitor({ runId, onClose }: RunMonitorProps) {
 
   return (
     <div
-      className="w-80 border-l h-full flex flex-col overflow-hidden"
+      className="w-80 shrink-0 border-l h-full flex flex-col overflow-hidden"
       style={{
         backgroundColor: "var(--bg-secondary)",
         borderColor: "var(--border-color)",
@@ -71,7 +71,7 @@ export default function RunMonitor({ runId, onClose }: RunMonitorProps) {
     >
       {/* Header */}
       <div
-        className="flex items-center justify-between px-4 py-3 border-b flex-shrink-0"
+        className="flex items-center justify-between px-4 py-3 border-b shrink-0"
         style={{ borderColor: "var(--border-color)" }}
       >
         <div className="flex items-center gap-2">
@@ -150,7 +150,7 @@ export default function RunMonitor({ runId, onClose }: RunMonitorProps) {
 
       {/* Event log */}
       <div
-        className="border-t flex-shrink-0 max-h-48 overflow-y-auto"
+        className="border-t shrink-0 max-h-48 overflow-y-auto"
         style={{ borderColor: "var(--border-color)" }}
       >
         <div className="px-4 py-2">
@@ -261,7 +261,7 @@ function NodeStatusCard({
               Output
             </summary>
             <pre
-              className="text-xs mt-1 p-2 rounded overflow-x-auto max-h-32"
+              className="text-xs mt-1 p-2 rounded max-h-32 overflow-y-auto overflow-x-hidden whitespace-pre-wrap wrap-break-word"
               style={{
                 backgroundColor: "var(--bg-tertiary)",
                 color: "var(--text-secondary)",
@@ -303,7 +303,7 @@ function EventLogEntry({
   return (
     <div className="flex items-center gap-2">
       <div
-        className="w-1.5 h-1.5 rounded-full flex-shrink-0"
+        className="w-1.5 h-1.5 rounded-full shrink-0"
         style={{ backgroundColor: eventConfig.color }}
       />
       <span className="text-xs truncate" style={{ color: "var(--text-muted)" }}>
