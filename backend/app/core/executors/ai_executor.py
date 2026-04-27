@@ -51,7 +51,8 @@ class AIExecutor(NodeExecutor):
                 error="AI node has no prompt_template configured",
             )
 
-        model_string = node_config.get("model", "ollama/phi3:mini")
+        # Default to a low-memory local model so workflows run on modest machines.
+        model_string = node_config.get("model", "ollama/tinyllama")
         timeout = node_config.get("timeout_seconds", 180)
         temperature = node_config.get("temperature", 0.7)
         subtype = node_config.get("subtype", "custom")
@@ -96,7 +97,39 @@ class AIExecutor(NodeExecutor):
         try:
             response = await provider.complete(full_prompt, llm_config)
         except RuntimeError as e:
-            return NodeResult(status="failed", error=str(e))
+            # If Ollama can't load a larger model due to memory pressure,
+            # retry once on a very small local model.
+            if (
+                provider.provider_name == "ollama"
+                and "requires more system memory" in str(e)
+                and model_string != "ollama/tinyllama"
+            ):
+                logger.warning(
+                    "ai_executor_ollama_memory_fallback",
+                    requested_model=model_string,
+                    fallback_model="ollama/tinyllama",
+                    run_id=context.run_id,
+                    error=str(e),
+                )
+                fallback_config = LLMConfig(
+                    model="tinyllama",
+                    timeout=timeout,
+                    temperature=temperature,
+                )
+                try:
+                    response = await provider.complete(full_prompt, fallback_config)
+                    llm_config = fallback_config
+                    model_string = "ollama/tinyllama"
+                except RuntimeError as fallback_error:
+                    return NodeResult(
+                        status="failed",
+                        error=(
+                            f"{str(e)}. Fallback model ollama/tinyllama also failed: "
+                            f"{str(fallback_error)}"
+                        ),
+                    )
+            else:
+                return NodeResult(status="failed", error=str(e))
 
         # Parse the response
         output = self._parse_response(response.text)

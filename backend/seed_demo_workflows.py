@@ -50,8 +50,8 @@ DEMO_WORKFLOWS = [
                             'Respond with JSON only: {"classification": "...", '
                             '"priority": "...", "summary": "one line summary"}'
                         ),
-                        "model": "ollama/phi3:mini",
-                        "timeout_seconds": 120,
+                        "model": "ollama/tinyllama",
+                        "timeout_seconds": 300,
                         "temperature": 0.3,
                         "output_schema": {
                             "type": "object",
@@ -123,8 +123,8 @@ DEMO_WORKFLOWS = [
                             '"key_points": ["point 1", "point 2", "point 3"], '
                             '"word_count": number}'
                         ),
-                        "model": "ollama/phi3:mini",
-                        "timeout_seconds": 120,
+                        "model": "ollama/tinyllama",
+                        "timeout_seconds": 300,
                         "temperature": 0.5,
                         "output_schema": {
                             "type": "object",
@@ -213,8 +213,8 @@ DEMO_WORKFLOWS = [
                             '"currencies_checked": ["EUR", "GBP", "JPY", "CAD"], '
                             '"analysis": "brief analysis"}'
                         ),
-                        "model": "ollama/phi3:mini",
-                        "timeout_seconds": 120,
+                        "model": "ollama/tinyllama",
+                        "timeout_seconds": 300,
                         "temperature": 0.3,
                         "output_schema": {
                             "type": "object",

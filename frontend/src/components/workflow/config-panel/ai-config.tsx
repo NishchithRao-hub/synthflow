@@ -49,7 +49,7 @@ export default function AIConfig({ config, onChange }: AIConfigProps) {
           Model
         </label>
         <select
-          value={(config.model as string) || "ollama/phi3:mini"}
+          value={(config.model as string) || "ollama/tinyllama"}
           onChange={(e) => onChange({ ...config, model: e.target.value })}
           className="w-full px-3 py-2 rounded-lg text-sm outline-none"
           style={{
@@ -58,6 +58,9 @@ export default function AIConfig({ config, onChange }: AIConfigProps) {
             border: "1px solid var(--border-color)",
           }}
         >
+          <option value="ollama/tinyllama">
+            Ollama - TinyLlama 1.1B (low RAM)
+          </option>
           <option value="ollama/mistral">Ollama — Mistral 7B</option>
           <option value="ollama/phi3:mini">Ollama — Phi-3 Mini</option>
           <option value="ollama/llama3">Ollama — Llama 3</option>

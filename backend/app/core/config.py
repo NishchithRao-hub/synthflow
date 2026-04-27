@@ -1,4 +1,5 @@
 from __future__ import annotations
+
 from pathlib import Path
 
 from pydantic import model_validator
@@ -20,7 +21,7 @@ class Settings(BaseSettings):
     DEBUG: bool = False
 
     # Database
-    DATABASE_URL: str
+    DATABASE_URL: str = ""
 
     # Redis
     REDIS_URL: str = "redis://localhost:6379/0"
@@ -64,6 +65,9 @@ class Settings(BaseSettings):
 
     @model_validator(mode="after")
     def validate_production_security(self) -> Settings:
+        if not self.DATABASE_URL.strip():
+            raise ValueError("DATABASE_URL must be set")
+
         env = self.ENVIRONMENT.lower().strip()
         is_production = env in {"production", "prod"}
 
