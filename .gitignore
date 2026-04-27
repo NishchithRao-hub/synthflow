@@ -48,6 +48,7 @@ infra/deploy-production-steps.sh
 .env.local
 
 # === Backend ===
+backend/celerybeat-schedule
 backend/test_context.py
 backend/test_execution_e2e.py
 backend/test_executors.py
